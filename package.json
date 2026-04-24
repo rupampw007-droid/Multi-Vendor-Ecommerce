@@ -2,11 +2,24 @@
   "name": "@multivendor-ecommerce/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {},
+  "scripts": {
+    "dev": "npx nx run-many --target=serve --all"
+  },
   "private": true,
   "dependencies": {
-    "axios": "^1.6.0",
-    "express": "^4.21.2"
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express-http-proxy": "^1.6.7",
+    "@types/morgan": "^1.9.10",
+    "@types/swagger-ui-express": "^4.1.8",
+    "axios": "^1.15.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^4.21.2",
+    "express-http-proxy": "^2.1.2",
+    "express-rate-limit": "^8.4.0",
+    "morgan": "^1.10.1",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",
@@ -14,10 +27,15 @@
     "@nx/esbuild": "22.6.5",
     "@nx/eslint": "22.6.5",
     "@nx/eslint-plugin": "22.6.5",
+    "@nx/express": "^22.6.5",
     "@nx/jest": "22.6.5",
     "@nx/js": "22.6.5",
     "@nx/node": "22.6.5",
+    "@nx/web": "22.6.5",
+    "@nx/webpack": "22.6.5",
     "@nx/workspace": "22.6.5",
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.5.7",
+    "@svgr/webpack": "^8.0.1",
     "@swc-node/register": "~1.11.1",
     "@swc/core": "~1.15.5",
     "@swc/helpers": "~0.5.18",
@@ -33,11 +51,13 @@
     "jest-util": "^30.0.2",
     "nx": "22.6.5",
     "prettier": "~3.6.2",
+    "react-refresh": "^0.10.0",
     "ts-jest": "^29.4.0",
     "ts-node": "10.9.1",
     "tslib": "^2.3.0",
     "typescript": "~5.9.2",
-    "typescript-eslint": "^8.40.0"
+    "typescript-eslint": "^8.40.0",
+    "webpack-cli": "^5.1.4"
   },
   "workspaces": [
     "apps/*"
