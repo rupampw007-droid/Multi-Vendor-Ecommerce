@@ -46,3 +46,4 @@ Thumbs.db
 test-output
 
 .nx/polygraph
+/generated/prisma

@@ -16,6 +16,10 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2022",
-    "customConditions": ["@multivendor-ecommerce/source"]
+    "customConditions": ["@multivendor-ecommerce/source"],
+    "paths": {
+      "@repo/*": ["./packages/*"],
+      "@multivendor-ecommerce/*": ["./*"]
+    }
   }
 }
