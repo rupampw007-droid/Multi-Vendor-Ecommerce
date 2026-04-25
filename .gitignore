@@ -47,3 +47,5 @@ test-output
 
 .nx/polygraph
 /generated/prisma
+
+.env
