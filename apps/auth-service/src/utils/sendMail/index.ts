@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
     service: process.env.SMTP_SERVICE, // use STARTTLS (upgrade connection to TLS after connecting)
     auth: {
       user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      pass: process.env.SMTP_PASSWORD,
     },
   });
 
@@ -30,6 +30,7 @@ const verifyTransporter = async () => {
 const renderEmailTemplate = async (templateName: string, data: Record<string, any>): Promise<string> => {
   const templatePath = path.join(
     process.cwd(),
+    "apps",
     "auth-service",
     "src",
     "utils",
@@ -49,10 +50,14 @@ export const sendEmail = async (
 ): Promise<boolean> => {
   await verifyTransporter();
   try {
+    if (!to?.trim()) {
+      throw new Error("Recipient email is required");
+    }
+
     const html = await renderEmailTemplate(templateName, data)
 
     await transporter.sendMail({
-      from : `<${process.env.SMTP_USER}`,
+      from : `<${process.env.SMTP_USER}>`,
       to,
       subject,
       html,

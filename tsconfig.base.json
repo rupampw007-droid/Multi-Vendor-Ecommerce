@@ -19,7 +19,7 @@
     "customConditions": ["@multivendor-ecommerce/source"],
     "paths": {
       "@repo/*": ["./packages/*"],
-      "@multivendor-ecommerce/*": ["./*"]
+      "@multivendor-ecommerce/*": ["./*"],
     }
   }
 }

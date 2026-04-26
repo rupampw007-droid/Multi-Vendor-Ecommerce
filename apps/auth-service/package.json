@@ -2,6 +2,7 @@
   "name": "@multivendor-ecommerce/auth-service",
   "version": "0.0.1",
   "private": true,
+  
   "nx": {
     "targets": {
       "build": {
@@ -17,6 +18,11 @@
             "cjs"
           ],
           "bundle": true,
+          "thirdParty": false,
+          "external": [
+            "@prisma/client/runtime/library",
+            "@prisma/client/runtime/library.js"
+          ],
           "main": "apps/auth-service/src/main.ts",
           "tsConfig": "apps/auth-service/tsconfig.app.json",
           "assets": [

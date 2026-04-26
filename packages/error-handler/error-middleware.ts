@@ -1,7 +1,7 @@
 import { AppError } from "./index";
-import {Request, Response} from 'express'
+import {NextFunction, Request, Response} from 'express'
 
-export const errorMiddleWare = (err: Error, req: Request, res: Response) => {
+export const errorMiddleWare = (err: Error, req: Request, res: Response, next: NextFunction) => {
     if(err instanceof AppError) {   //Checks those errors which are created by me in the AppError
         console.log(`Error ${req.method} ${req.url} ${err.message}`)
 
