@@ -41,8 +41,13 @@ const renderEmailTemplate = async (templateName: string, data: Record<string, an
 
 
 
-export const sendEmail = async (to:string, subject:string, templateName:string, data:Record<string, any>) => {
-  verifyTransporter();
+export const sendEmail = async (
+  to: string,
+  subject: string,
+  templateName: string,
+  data: Record<string, any>
+): Promise<boolean> => {
+  await verifyTransporter();
   try {
     const html = await renderEmailTemplate(templateName, data)
 
@@ -55,5 +60,6 @@ export const sendEmail = async (to:string, subject:string, templateName:string, 
     return true
   } catch(e) {
     console.log("Error sending email", e)
+    return false
   }
 }
