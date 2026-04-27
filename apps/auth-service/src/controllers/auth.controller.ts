@@ -8,7 +8,9 @@ import {
 } from '../utils/auth.helper';
 import prisma from '@repo/lib/prisma/prisma';
 import { AuthError, ValidationError } from '@repo/error-handler';
-import bcrypt from 'bcryptjs'
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { setCookie } from '../utils/cookies/setCookie';
 
 // REGISTER A NEW USER
 
@@ -49,50 +51,83 @@ export const verifyUser = async (
     if (!email || !otp || !password || !name) {
       return next(new ValidationError('All fields are required!'));
     }
-    const existingUser = await prisma.users.findUnique({where: {email}})
+    const existingUser = await prisma.users.findUnique({ where: { email } });
 
-    if(existingUser) {
-        return new ValidationError("User already exists with this email")
+    if (existingUser) {
+      return new ValidationError('User already exists with this email');
     }
 
     await verifyOtp(email, otp, next);
-    const hashedPassword = await bcrypt.hash(password, 10)
+    const hashedPassword = await bcrypt.hash(password, 10);
     await prisma.users.create({
       data: {
         name,
         email,
         password: hashedPassword,
-      }
-    })
+      },
+    });
     res.status(201).json({
-      success : true,
-      message : "User registered successfully"
-    })
+      success: true,
+      message: 'User registered successfully',
+    });
   } catch (err) {
-    return next(err)
+    return next(err);
   }
 };
 
-export const loginUser = async(req: Request, res: Response, next: NextFunction) {
+export const loginUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const {email, password} = req.body;
+    const { email, password } = req.body;
 
-    if(!email || !password) {
-      throw new ValidationError('Email and Password are required')
+    if (!email || !password) {
+      throw new ValidationError('Email and Password are required');
     }
-    const user = await prisma.users.findUnique({where: {email}})
-    if(!user) {
-      throw new AuthError("User doesn't exist")
+    const user = await prisma.users.findUnique({ where: { email } });
+    if (!user) {
+      throw new AuthError("User doesn't exist");
     }
     //verify password
-    const isMatch = await bcrypt.compare(password, user.password!)
-    if(!isMatch) {
-      throw new AuthError('Invalid Email or Password')
+    const isMatch = await bcrypt.compare(password, user.password!);
+    if (!isMatch) {
+      throw new AuthError('Invalid Email or Password');
     }
 
     // Generate access and refresh token
-    const accessToken = jwt
-  } catch(err) {
-    return next(err)
+    const accessToken = jwt.sign(
+      { id: user.id, role: 'user' },
+      process.env.ACCESS_TOKEN_SECRET as string,
+      { expiresIn: '15m' },
+    );
+
+    const refreshToken = jwt.sign(
+      {
+        id: user.id,
+        role: 'user',
+      },
+      process.env.REFRESH_TOKEN_SECRET as string,
+      {
+        expiresIn: '7d',
+      },
+    );
+
+    // Store the refresh and access token in an httpOnly secure cookie
+    setCookie(res, "refresh_token", refreshToken)
+    setCookie(res, "access_token", accessToken)
+
+    res.status(200).json({
+      message: "Login Successful",
+      user : {
+        id: user.id,
+        email: user.email,
+        name : user.name
+      }
+    })
+  } catch (err) {
+    return next(err);
   }
-}
+};
+
