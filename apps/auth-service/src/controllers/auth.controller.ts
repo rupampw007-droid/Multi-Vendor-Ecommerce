@@ -5,6 +5,7 @@ import {
   sendOtp,
   trackOtpRequest,
   validateRegistrationData,
+  verifyForgotPasswordOtp,
   verifyOtp,
 } from '../utils/auth.helper';
 import prisma from '@repo/lib/prisma/prisma';
@@ -145,7 +146,7 @@ export const verifyUserForgotPassword = async(
   res: Response,
   next: NextFunction
 ) => {
-  await verifyForgotPasswordOtp(req,res,next, userType);
+  await verifyForgotPasswordOtp(req,res,next);
 }
 
 export const resetUserPassword = async (
