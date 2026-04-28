@@ -1,4 +1,5 @@
 {
     "prisma.pinToPrisma6": true,
-    "mos.port": ""
+    "mos.port": "",
+    "js/ts.tsdk.path": "node_modules\\typescript\\lib"
 }
