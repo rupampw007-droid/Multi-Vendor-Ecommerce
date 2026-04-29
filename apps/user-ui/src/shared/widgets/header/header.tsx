@@ -4,10 +4,12 @@ import ProfileIcon from '@/assets/svgs/profie-icon';
 import { Search } from 'lucide-react';
 import Link from 'next/link';
 import React from 'react';
+import HeaderBottom from './header-bottom';
 
 const Header = () => {
   return (
     <div className="w-full bg-white">
+      {/* Top bar */}
       <div className="w-[80%] py-5 m-auto flex items-center justify-between">
         {/* Logo */}
         <div>
@@ -30,7 +32,6 @@ const Header = () => {
 
         {/* Profile + actions */}
         <div className="flex items-center gap-5">
-          {/* Sign in */}
           <Link href={'/login'} className="flex items-center gap-2">
             <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
               <ProfileIcon />
@@ -41,7 +42,6 @@ const Header = () => {
             </div>
           </Link>
 
-          {/* Wishlist */}
           <Link href={'/wishlist'} className="relative">
             <HeartIcon />
             <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
@@ -49,7 +49,6 @@ const Header = () => {
             </div>
           </Link>
 
-          {/* Cart */}
           <Link href={'/cart'} className="relative">
             <CartIcon />
             <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
@@ -58,6 +57,10 @@ const Header = () => {
           </Link>
         </div>
       </div>
+
+      {/* Divider + bottom nav — outside the flex row */}
+      <div className="border-b border-b-[#99999968]" />
+      <HeaderBottom />
     </div>
   );
 };
