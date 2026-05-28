@@ -2,6 +2,7 @@ import Header from '@/shared/widgets/header/header';
 import './global.css';
 import { Metadata } from 'next';
 import { Poppins, Roboto } from 'next/font/google';
+import Providers from './provider';
 
 export const metadata: Metadata = {
   title: 'Eshop',

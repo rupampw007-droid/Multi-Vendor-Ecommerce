@@ -1,5 +1,7 @@
 'use client';
 import SignInWithGoogleButton from '@/shared/components';
+import { useMutation } from '@tanstack/react-query';
+import axios from 'axios';
 import { EyeIcon, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -18,7 +20,7 @@ const Signup = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [canResend, setCanResend] = useState(false)
   const [timer, setTimer] = useState(60)
-  const [showotp, setShowotp] = useState(true)
+  const [showotp, setShowotp] = useState(false)
   const [otp, setOtp] = useState<string[]>(['', '', '', ''])
   const [userData, setUserData] = useState<FormData | null>(null)
   const inputRefs = useRef<Array<HTMLInputElement | null>>([])
@@ -35,11 +37,42 @@ const Signup = () => {
 
   }
 
+  const startResendTimer = () => {
+    const interval = setInterval(() => {
+      setTimer((prev) => {
+        if(prev <= 1) {
+          clearInterval(interval)
+          setCanResend(true);
+          return 0;
+        }
+        return prev-1
+      })
+    }, 1000)
+  }
+
+  const signupMutation = useMutation({
+    mutationFn: async (data: FormData) => {
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_URI}/api/user-registration`, data)
+      return response.data
+    },
+    onSuccess: (_, formData) => {
+      setUserData(formData)
+      setShowotp(true)
+      setCanResend(false)
+      setTimer(60)
+      startResendTimer();
+    } 
+  }
+  )
+
   const onSubmit = async (data: FormData) => {
-    setIsLoading(true);
+    console.log(data)
     setServerError(null);
     try {
       // your auth logic here
+      signupMutation.mutate(data, {
+        onError: () => setServerError('Something went wrong')
+      })
       console.log({ ...data });
     } catch (err) {
       setServerError('Invalid email or password. Please try again.');
@@ -171,7 +204,7 @@ const Signup = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={signupMutation.isPending}
               className="w-full mt-2 py-2.5 bg-[#000099] hover:bg-[#0000cc] disabled:bg-[#000099]/60 disabled:cursor-not-allowed text-white font-semibold rounded transition-colors duration-200"
             >
               {isLoading ? 'Signing up...' : 'Sign Up'}

@@ -19,7 +19,7 @@ app.use(morgan('dev'))
 app.use(express.urlencoded({limit: '100mb', extended: true}))
 app.use(cors({
   origin: 'http://localhost:3000',
-  allowedHeaders: ["authorization", "contentType"],
+  allowedHeaders: ["Authorization",'Content-Type'],
   credentials: true,
 }))
 app.use(cookieParser())
