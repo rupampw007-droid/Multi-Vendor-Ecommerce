@@ -1,7 +1,7 @@
 'use client';
 import SignInWithGoogleButton from '@/shared/components';
 import { useMutation } from '@tanstack/react-query';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { EyeIcon, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -49,6 +49,20 @@ const Signup = () => {
       })
     }, 1000)
   }
+
+  const verifyOtoMutation = useMutation({
+    mutationFn: async () => {
+      if(!userData) return;
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_URI}/api/verify-user`,
+        {
+          ...userData,
+          otp: otp.join("")
+        }
+      )
+      return response.data
+    },
+    onSuccess: () => router.push('/login')
+  })
 
   const signupMutation = useMutation({
     mutationFn: async (data: FormData) => {
@@ -232,9 +246,15 @@ const Signup = () => {
                 ))}
               </div>
               <button
-                className="w-full mt-4 text-lg cursor-pointer bg-blue-500 text-white py-2 "
+                className="w-full mt-4 text-lg cursor-pointer bg-blue-500 text-white py-2 disabled:cursor-not-allowed "
+                disabled={verifyOtoMutation.isPending}
+                onClick={() => verifyOtoMutation.mutate()}
               >
-                Verify OTP
+               {verifyOtoMutation.isPending? (
+                <p>Verifying OTP...</p>
+               ): (
+                <p>Verify OTP</p>
+               )}
               </button>
               <p className="text-center text-sm mt-4">
                 {canResend? (
@@ -245,6 +265,13 @@ const Signup = () => {
                   `Resend OTP in ${timer}s`
                 ) }
               </p>
+              {verifyOtoMutation.isError && verifyOtoMutation.error instanceof AxiosError && (
+                <p className="text-red-500 text-sm mt-2">
+                  {
+                    verifyOtoMutation.error.response?.data?.message || verifyOtoMutation.error.message
+                  }
+                </p>
+              )}
             </div>
           )}
         </div>
