@@ -13,6 +13,6 @@ export const errorMiddleWare = (err: Error, req: Request, res: Response, next: N
     }
     console.log("Unhandled Error: ", err)  //Checks the errors which are not in the AppError
     return res.status(500).json({
-        message: "Something went wrong please try again!"
+        message: " went wrong please try again!"
     })
 }

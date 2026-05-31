@@ -31,11 +31,11 @@ export const userRegestration = async (
       throw new ValidationError('User already exist with this email');
     }
 
-    await checkOtpRestrictions(email, next);
-    await trackOtpRequest(email, next);
+    await checkOtpRestrictions(email);
+    await trackOtpRequest(email);
     await sendOtp(name, email, 'user-activation-mail');
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'OTP sent to email. Please verify your account',
     });
   } catch (error) {
@@ -56,10 +56,10 @@ export const verifyUser = async (
     const existingUser = await prisma.users.findUnique({ where: { email } });
 
     if (existingUser) {
-      return new ValidationError('User already exists with this email');
+      return next(new ValidationError('User already exists with this email'));
     }
 
-    await verifyOtp(email, otp, next);
+    await verifyOtp(email, otp);
     const hashedPassword = await bcrypt.hash(password, 10);
     await prisma.users.create({
       data: {
@@ -68,11 +68,12 @@ export const verifyUser = async (
         password: hashedPassword,
       },
     });
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'User registered successfully',
     });
   } catch (err) {
+    console.log(err)
     return next(err);
   }
 };

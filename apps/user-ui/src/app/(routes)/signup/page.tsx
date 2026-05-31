@@ -34,7 +34,7 @@ const Signup = () => {
   } = useForm<FormData>();
 
   const resendOtp = () => {
-
+    startResendTimer()
   }
 
   const startResendTimer = () => {
@@ -83,7 +83,6 @@ const Signup = () => {
     console.log(data)
     setServerError(null);
     try {
-      // your auth logic here
       signupMutation.mutate(data, {
         onError: () => setServerError('Something went wrong')
       })
@@ -126,7 +125,7 @@ const Signup = () => {
         <div className="md:w-[480px] p-8 bg-white shadow rounded-lg">
           <p className="text-center text-gray-500 mb-4">
             Aleady have an account?{' '}
-            <Link href={'/signin'} className="text-blue-500">
+            <Link href={'/login'} className="text-blue-500">
               Sign in
             </Link>
           </p>
@@ -220,6 +219,7 @@ const Signup = () => {
               type="submit"
               disabled={signupMutation.isPending}
               className="w-full mt-2 py-2.5 bg-[#000099] hover:bg-[#0000cc] disabled:bg-[#000099]/60 disabled:cursor-not-allowed text-white font-semibold rounded transition-colors duration-200"
+              
             >
               {isLoading ? 'Signing up...' : 'Sign Up'}
             </button>
