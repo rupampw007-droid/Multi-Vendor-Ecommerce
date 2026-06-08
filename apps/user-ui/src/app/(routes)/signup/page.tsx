@@ -33,10 +33,6 @@ const Signup = () => {
     formState: { errors },
   } = useForm<FormData>();
 
-  const resendOtp = () => {
-    startResendTimer()
-  }
-
   const startResendTimer = () => {
     const interval = setInterval(() => {
       setTimer((prev) => {
@@ -110,6 +106,12 @@ const Signup = () => {
   const handleOtpKeyDown = (index:number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if(e.key === "Backspace" && !otp[index] && index > 0) {
       inputRefs.current[index-1]?.focus()
+    }
+  }
+
+   const resendOtp = () => {
+    if(userData) {
+      signupMutation.mutate(userData)
     }
   }
 

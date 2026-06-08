@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import prisma from '@repo/lib/prisma/prisma';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 export const validateRegistrationData = (
   data: any,
@@ -27,17 +28,18 @@ export const validateRegistrationData = (
 };
 
 export const checkOtpRestrictions = async (email: string) => {
-  if (await redis.get(`otp_lock:${email}`)) {
+  const normalizedEmail = normalizeEmail(email);
+  if (await redis.get(`otp_lock:${normalizedEmail}`)) {
     throw new ValidationError(
       'Account Locked due to multiple failed attempts! Try again after 30 minutes',
     );
   }
-  if (await redis.get(`otp_spam_lock:${email}`)) {
+  if (await redis.get(`otp_spam_lock:${normalizedEmail}`)) {
     throw new ValidationError(
       'Too many OTP requests! Please wait 1 hour before requesting again',
     );
   }
-  if (await redis.get(`otp_cooldown:${email}`)) {
+  if (await redis.get(`otp_cooldown:${normalizedEmail}`)) {
     throw new ValidationError(
       'Please wait 1 minute before requesting a new OTP!',
     );
@@ -45,7 +47,8 @@ export const checkOtpRestrictions = async (email: string) => {
 };
 
 export const trackOtpRequest = async (email: string) => {
-  const otpRequestKey = `otp_request_count:${email}`;
+  const normalizedEmail = normalizeEmail(email);
+  const otpRequestKey = `otp_request_count:${normalizedEmail}`;
   const otpRequests = parseInt((await redis.get(otpRequestKey)) || '0');
 
   if (otpRequests >= 2) {
@@ -62,19 +65,21 @@ export const sendOtp = async (
   email: string,
   template: string,
 ) => {
+  const normalizedEmail = normalizeEmail(email);
   const otp = crypto.randomInt(1000, 9999).toString();
-  await sendEmail(email, 'Verify Your Email', template, { name, otp });
-  await redis.set(`otp:${email}`, otp, 'EX', 300);
-  await redis.set(`otp_cooldown:${email}`, 'true', 'EX', 60);
+  await sendEmail(normalizedEmail, 'Verify Your Email', template, { name, otp });
+  await redis.set(`otp:${normalizedEmail}`, otp, 'EX', 300);
+  await redis.set(`otp_cooldown:${normalizedEmail}`, 'true', 'EX', 60);
 };
 
 export const verifyOtp = async (email: string, otp: string) => {
-  if (await redis.get(`otp_lock:${email}`)) {
+  const normalizedEmail = normalizeEmail(email);
+  if (await redis.get(`otp_lock:${normalizedEmail}`)) {
     throw new ValidationError(
       `Too many Incorrect Attempts! Please try again later`,
     );
   }
-  const storedOtp = await redis.get(`otp:${email}`);
+  const storedOtp = await redis.get(`otp:${normalizedEmail}`);
   if (!storedOtp) {
     throw new ValidationError('Invalid or expired OTP!');
   }
@@ -105,7 +110,7 @@ export const handleForgotPassword = async (
   userType: 'user' | 'seller',
 ) => {
   try {
-    const { email } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
 
     if (!email) {
       throw new ValidationError('Email is required!');
@@ -125,7 +130,7 @@ export const handleForgotPassword = async (
     await trackOtpRequest(email);
 
     // Generate OTP and send to Email
-    await sendOtp(email, user.name, 'forgot-password-user-mail');
+    await sendOtp(user.name, email, 'forgot-password-user-mail');
     res.status(200).json({
       message: 'OTP sent to email. Please verify your account',
     });
@@ -140,7 +145,8 @@ export const verifyForgotPasswordOtp = async (
   next: NextFunction,
 ) => {
   try {
-    const { email, otp } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const { otp } = req.body;
     if (!email || !otp) {
       throw new ValidationError('Email and OTP are required');
     }

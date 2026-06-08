@@ -24,16 +24,17 @@ export const userRegestration = async (
   try {
     validateRegistrationData(req.body, 'user');
     const { name, email } = req.body;
+    const normalizedEmail = String(email).trim().toLowerCase();
 
-    const existingUser = await prisma.users.findUnique({ where: { email } });
+    const existingUser = await prisma.users.findUnique({ where: { email: normalizedEmail } });
 
     if (existingUser) {
       throw new ValidationError('User already exist with this email');
     }
 
-    await checkOtpRestrictions(email);
-    await trackOtpRequest(email);
-    await sendOtp(name, email, 'user-activation-mail');
+    await checkOtpRestrictions(normalizedEmail);
+    await trackOtpRequest(normalizedEmail);
+    await sendOtp(name, normalizedEmail, 'user-activation-mail');
 
     return res.status(200).json({
       message: 'OTP sent to email. Please verify your account',
@@ -50,21 +51,22 @@ export const verifyUser = async (
 ) => {
   try {
     const { email, otp, password, name } = req.body;
-    if (!email || !otp || !password || !name) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!normalizedEmail || !otp || !password || !name) {
       return next(new ValidationError('All fields are required!'));
     }
-    const existingUser = await prisma.users.findUnique({ where: { email } });
+    const existingUser = await prisma.users.findUnique({ where: { email: normalizedEmail } });
 
     if (existingUser) {
       return next(new ValidationError('User already exists with this email'));
     }
 
-    await verifyOtp(email, otp);
+    await verifyOtp(normalizedEmail, otp);
     const hashedPassword = await bcrypt.hash(password, 10);
     await prisma.users.create({
       data: {
         name,
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
       },
     });
@@ -85,11 +87,12 @@ export const loginUser = async (
 ) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = String(email).trim().toLowerCase();
 
-    if (!email || !password) {
+    if (!normalizedEmail || !password) {
       throw new ValidationError('Email and Password are required');
     }
-    const user = await prisma.users.findUnique({ where: { email } });
+    const user = await prisma.users.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
       throw new AuthError("User doesn't exist");
     }
@@ -157,11 +160,12 @@ export const resetUserPassword = async (
 ) => {
   try {
     const { email, newPassword } = req.body;
+    const normalizedEmail = String(email).trim().toLowerCase();
 
-    if (!email || !newPassword) {
+    if (!normalizedEmail || !newPassword) {
       throw new ValidationError('Email and New Password are required!');
     }
-    const user = await prisma.users.findUnique({ where: { email } });
+    const user = await prisma.users.findUnique({ where: { email: normalizedEmail } });
     if (!user) return next(new ValidationError('User not found!'));
 
     //Compare new password with the existing one
