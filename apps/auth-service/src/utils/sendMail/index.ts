@@ -48,12 +48,13 @@ export const sendEmail = async (
   templateName: string,
   data: Record<string, any>
 ): Promise<boolean> => {
+  console.log(to)
   await verifyTransporter();
   try {
     if (!to?.trim()) {
       throw new Error("Recipient email is required");
     }
-
+    
     const html = await renderEmailTemplate(templateName, data)
 
     await transporter.sendMail({
