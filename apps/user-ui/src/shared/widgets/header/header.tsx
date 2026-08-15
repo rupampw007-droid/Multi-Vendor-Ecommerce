@@ -1,12 +1,15 @@
+'use client';
 import { CartIcon } from '@/assets/svgs/cart-icon';
 import { HeartIcon } from '@/assets/svgs/heart-icon';
-import ProfileIcon from '@/assets/svgs/profie-icon'; 
+import ProfileIcon from '@/assets/svgs/profie-icon';
 import { Search } from 'lucide-react';
 import Link from 'next/link';
 import React from 'react';
 import HeaderBottom from './header-bottom';
+import useUser from '@/hooks/useUser';
 
 const Header = () => {
+  const { user, isLoading } = useUser();
   return (
     <div className="w-full bg-white">
       {/* Top bar */}
@@ -32,16 +35,31 @@ const Header = () => {
 
         {/* Profile + actions */}
         <div className="flex items-center gap-5">
-          <Link href={'/login'} className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-              <ProfileIcon />
-            </div>
-            <div>
-              <span className="block font-medium text-sm">Hello,</span>
-              <span className="block font-semibold text-sm">Sign In</span>
-            </div>
-          </Link>
-
+          {!isLoading && user ? (
+            <>
+              <Link href={'/profile'} className="flex items-center gap-2">
+                <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                  <ProfileIcon />
+                </div>
+                <div> 
+                  <span className="block font-medium text-sm">Hello,</span>
+                  <span className="block font-semibold text-sm">
+                    {user?.name?.split(" ")[0]}
+                  </span>
+                </div>
+              </Link>
+            </>
+          ) : (
+            <Link href={'/login'} className="flex items-center gap-2">
+              <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                <ProfileIcon />
+              </div>
+              <div>
+                <span className="block font-medium text-sm">Hello,</span>
+                <span className="block font-semibold text-sm">Sign In</span>
+              </div>
+            </Link>
+          )}
           <Link href={'/wishlist'} className="relative">
             <HeartIcon />
             <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
