@@ -20,7 +20,9 @@ model images {
   file_id   String
   url       String
   usersId   String?     @db.ObjectId @unique
+  shopId    String?     @unique @db.ObjectId
   users     users?       @relation(fields: [usersId], references: [id])
+  shops    shops?       @relation(fields: [shopId], references: [id])
 }
 
 model users {
@@ -30,6 +32,50 @@ model users {
   password  String? 
   following String[]    
   avatar    images?
+  shopReviews shopReviews[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+}
+
+model shopReviews {
+  id      String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId  String     @db.ObjectId
+  user    users     @relation(fields: [userId], references: [id])
+  rating Float
+  reviews String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  shopsId  String?  @db.ObjectId
+  shops    shops? @relation(fields: [shopsId], references: [id])
+}
+model shops {
+  id      String      @id @default(auto()) @map("_id") @db.ObjectId
+  name    String
+  bio     String?
+  category String
+  avatar  images?
+  converBanner String?
+  address String
+  opening_hours  String?
+  website String?
+  socialLinks  Json[]
+  ratings Float  @default(0)
+  reviews shopReviews[]
+  sellerId  String @unique @db.ObjectId
+  sellers sellers @relation(fields: [sellerId], references: [id])
+  createdAt DateTime  @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+model sellers {
+  id      String      @id @default(auto()) @map("_id") @db.ObjectId
+  name    String      
+  email   String     @unique
+  phone_number String
+  country String
+  password String
+  stripeId  String?
+  shop  shops?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime  @updatedAt
+  shopId      String? @db.ObjectId
 }
