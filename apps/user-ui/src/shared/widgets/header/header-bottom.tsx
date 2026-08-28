@@ -3,6 +3,7 @@
 import { CartIcon } from '@/assets/svgs/cart-icon';
 import ProfileIcon from '@/assets/svgs/profie-icon';
 import { navItems } from '@/configs/constants';
+import useUser from '@/hooks/useUser';
 import { AlignLeft, ChevronDownIcon, HeartIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -10,6 +11,7 @@ import { useEffect, useState } from 'react';
 const HeaderBottom = () => {
   const [show, setShow] = useState(false);
   const [isSticky, setIsSticky] = useState(false);
+  const {user, isLoading} = useUser()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -60,31 +62,46 @@ const HeaderBottom = () => {
 
         <div>
           {isSticky && (
-            <div className="flex items-center gap-5">
-              <Link href="/login" className="flex items-center gap-2">
+                    <div className="flex items-center gap-5">
+          {!isLoading && user ? (
+            <>
+              <Link href={'/profile'} className="flex items-center gap-2">
                 <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
                   <ProfileIcon />
                 </div>
-                <div>
+                <div> 
                   <span className="block font-medium text-sm">Hello,</span>
-                  <span className="block font-semibold text-sm">Sign In</span>
+                  <span className="block font-semibold text-sm">
+                    {user?.name?.split(" ")[0]}
+                  </span>
                 </div>
               </Link>
-
-              <Link href="/wishlist" className="relative">
-                <HeartIcon />
-                <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
-                  <span className="text-white font-medium text-[10px]">0</span>
-                </div>
-              </Link>
-
-              <Link href="/cart" className="relative">
-                <CartIcon />
-                <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
-                  <span className="text-white font-medium text-[10px]">0</span>
-                </div>
-              </Link>
+            </>
+          ) : (
+            <Link href={'/login'} className="flex items-center gap-2">
+              <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                <ProfileIcon />
+              </div>
+              <div>
+                <span className="block font-medium text-sm">Hello,</span>
+                <span className="block font-semibold text-sm">Sign In</span>
+              </div>
+            </Link>
+          )}
+          <Link href={'/wishlist'} className="relative">
+            <HeartIcon />
+            <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
+              <span className="text-white font-medium text-[10px]">0</span>
             </div>
+          </Link>
+
+          <Link href={'/cart'} className="relative">
+            <CartIcon />
+            <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
+              <span className="text-white font-medium text-[10px]">0</span>
+            </div>
+          </Link>
+        </div>
           )}
         </div>
       </div>
