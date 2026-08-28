@@ -120,7 +120,7 @@ export const handleForgotPassword = async (
     const user =
       userType === 'user'
         ? await prisma.users.findUnique({ where: { email } })
-        : null;
+        : await prisma.sellers.findUnique({where: {email}});
     if (!user) {
       throw new ValidationError(`${userType} not found`);
     }
@@ -130,7 +130,8 @@ export const handleForgotPassword = async (
     await trackOtpRequest(email);
 
     // Generate OTP and send to Email
-    await sendOtp(user.name, email, 'forgot-password-user-mail');
+    await sendOtp(email, user.name, userType === "user" ? 'forgot-password-user-mail' : 'forgot-password-seller-email');
+
     res.status(200).json({
       message: 'OTP sent to email. Please verify your account',
     });
