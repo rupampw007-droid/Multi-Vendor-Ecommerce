@@ -39,7 +39,11 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.74.0",
+<<<<<<< HEAD
+    "stripe": "^22.6.0",
+=======
     "react-hot-toast": "^2.6.0",
+>>>>>>> d7ec7b87d88302c17baf36615df6ced732fbae9d
     "swagger-autogen": "^2.23.7"
   },
   "devDependencies": {

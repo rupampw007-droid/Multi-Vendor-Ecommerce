@@ -1,0 +1,17 @@
+export const shopCategories = [
+    { value: "electronics", label: "Electronics" },
+    { value: "fashion", label: "Fashion & Apparel" },
+    { value: "beauty", label: "Beauty & Personal Care" },
+    { value: "home-kitchen", label: "Home & Kitchen" },
+    { value: "grocery", label: "Grocery" },
+    { value: "health-wellness", label: "Health & Wellness" },
+    { value: "sports-outdoors", label: "Sports & Outdoors" },
+    { value: "toys-games", label: "Toys & Games" },
+    { value: "books-stationery", label: "Books & Stationery" },
+    { value: "automotive", label: "Automotive" },
+    { value: "pet-supplies", label: "Pet Supplies" },
+    { value: "jewelry-accessories", label: "Jewelry & Accessories" },
+    { value: "furniture", label: "Furniture" },
+    { value: "handmade-crafts", label: "Handmade & Crafts" },
+    { value: "other", label: "Other" },
+]

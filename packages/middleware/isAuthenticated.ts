@@ -35,7 +35,7 @@ const isAuthenticated = async (req: any, res: Response, next: NextFunction) => {
 
   } catch (error) {
     return res.status(401).json({
-        message: "Unauthorized! Token expired or invalid"
+        message: "Unauthorized! Token expired or invalid", error
     })
   }
 };

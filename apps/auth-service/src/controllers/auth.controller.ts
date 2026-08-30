@@ -13,6 +13,11 @@ import { AuthError, ValidationError } from '@repo/error-handler';
 import bcrypt from 'bcryptjs';
 import jwt, { JsonWebTokenError } from 'jsonwebtoken';
 import { setCookie } from '../utils/cookies/setCookie';
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2026-08-26.dahlia',
+});
 
 // REGISTER A NEW USER
 
@@ -75,7 +80,7 @@ export const verifyUser = async (
       message: 'User registered successfully',
     });
   } catch (err) {
-    console.log(err)
+    console.log(err);
     return next(err);
   }
 };
@@ -145,13 +150,13 @@ export const userForgotPassword = async (
   await handleForgotPassword(req, res, next, 'user');
 };
 
-export const verifyUserForgotPassword = async(
-  req:Request,
+export const verifyUserForgotPassword = async (
+  req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
-  await verifyForgotPasswordOtp(req,res,next);
-}
+  await verifyForgotPasswordOtp(req, res, next);
+};
 
 // get logged in user
 export const getUser = async (req: any, res: Response, next: NextFunction) => {
@@ -243,92 +248,230 @@ export const resetUserPassword = async (
   }
 };
 
-
 // register a new seller
-export const registerSeller = async(req : Request, res : Response, next: NextFunction) => {
+export const registerSeller = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    validateRegistrationData(req.body, "seller");
-    const {name, email} = req.body
+    validateRegistrationData(req.body, 'seller');
+    const { name, email } = req.body;
 
     const existingSeller = await prisma.sellers.findUnique({
-      where: {email},
-    })
+      where: { email },
+    });
     if (existingSeller) {
-      throw new ValidationError("Seller already exists with this email")
+      throw new ValidationError('Seller already exists with this email');
     }
-    await checkOtpRestrictions(email)
-    await trackOtpRequest(email)
-    await sendOtp(name, email, "seller-activation")
+    await checkOtpRestrictions(email);
+    await trackOtpRequest(email);
+    await sendOtp(name, email, 'seller-activation');
 
     res.status(200).json({
-      message : "Otp sent to your email, please verify your account"
-    })
+      message: 'Otp sent to your email, please verify your account',
+    });
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};
 
 // verify seller with otp
-export const verifySeller = async (req: Request, res: Response, next : NextFunction) => {
+export const verifySeller = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const {email, otp, password, name, phone_number, country} = req.body
-    if(!email || !otp || !password || !name || !phone_number || !country) {
-      return next(new ValidationError('All fields are required'))
+    const { email, otp, password, name, phone_number, country } = req.body;
+    if (!email || !otp || !password || !name || !phone_number || !country) {
+      return next(new ValidationError('All fields are required'));
     }
 
     const existingSeller = await prisma.sellers.findUnique({
-      where: {email}
-    })
+      where: { email },
+    });
 
-    if(existingSeller) {
-      return next(
-        new ValidationError("Seller already exists with this email")
-      )
+    if (existingSeller) {
+      return next(new ValidationError('Seller already exists with this email'));
     }
 
-    await verifyOtp(email, otp)
-    const hashedPassword = await bcrypt.hash(password, 10)
+    await verifyOtp(email, otp);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const seller = await prisma.sellers.create({
-      data : {
-        name, email, password: hashedPassword,
-        country, phone_number
-      }
-    })
-    res.status(201).json({seller, message : "Seller registered successfully!"})
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        country,
+        phone_number,
+      },
+    });
+    res
+      .status(201)
+      .json({ seller, message: 'Seller registered successfully!' });
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};
 
-// create a new shop 
-export const createShop = async (req: Request, res: Response, next: NextFunction) => {
+// create a new shop
+export const createShop = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const {name, bio, address, opening_hours, website, category, sellerId} = req.body
+    const { name, bio, address, opening_hours, website, category, sellerId } =
+      req.body;
 
-    if(!name || !bio || !address || !opening_hours || !website || !category || !sellerId) {
-      return next(new ValidationError("All fields are required"))
+    if (
+      !name ||
+      !bio ||
+      !address ||
+      !opening_hours ||
+      !website ||
+      !category ||
+      !sellerId
+    ) {
+      return next(new ValidationError('All fields are required'));
     }
 
     const shopData = {
-      name, bio, address, opening_hours, category, sellerId, website
-    }
+      name,
+      bio,
+      address,
+      opening_hours,
+      category,
+      sellerId,
+      website,
+    };
 
-    if(website && website.trim() !== "") {
-      shopData.website = website
+    if (website && website.trim() !== '') {
+      shopData.website = website;
     }
 
     const shop = await prisma.shops.create({
-      data : shopData
-    })
+      data: shopData,
+    });
 
     res.status(201).json({
-      success : true,
-      shop
-    })
+      success: true,
+      shop,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// create stripe connect account link
+export const createStripeConnectLink = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { sellerId } = req.body;
+    if (!sellerId) return next(new ValidationError('Seller Id is required'));
+    const seller = await prisma.sellers.findUnique({
+      where: {
+        id: sellerId,
+      },
+    });
+    if (!seller) {
+      return next(new ValidationError('Seller is not available with this ID'));
+    }
+
+    const account = await stripe.account.create({
+      type: 'express',
+      email: seller?.email,
+      country: 'GB',
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+      },
+    });
+
+    await prisma.sellers.update({
+      where: {
+        id: sellerId,
+      },
+      data: {
+        stripeId: account.id,
+      },
+    });
+
+    const accountLink = await stripe.accountLinks.create({
+      account: account.id,
+      refresh_url: `http://localhost:3000/success`,
+      return_url: `http://localhost:3000/success`,
+      type: 'account_onboarding',
+    });
+
+    res.json({
+      url: accountLink.url,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+//loginSeller
+export const loginSeller = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password)
+      return next(new ValidationError('Email and password are requried!'));
+
+    const seller = await prisma.sellers.findUnique({ where: { email } });
+    if (!seller) return next(new ValidationError('Invalid email or password!'));
+
+    //verify password
+    const isMatch = await bcrypt.compare(password, seller.password);
+    if (!isMatch) {
+      return next(new ValidationError('Invalid email or password'));
+    }
+    const accessToken = jwt.sign(
+      {
+        id: seller.id,
+        role: 'seller',
+      },
+      process.env.ACCESS_TOKEN_SECRET as string,
+      { expiresIn: '15m' },
+    );
+
+    const refreshToken = jwt.sign({
+      id: seller.id,
+      role: 'seller',
+    },
+  process.env.REFRESH_TOKEN_SECRET as string,
+  {expiresIn: '7d'}
+);
+
+// store refresh token 
+  setCookie(res, 'seller-refresh-token', refreshToken)
+  setCookie(res, 'seller-access-token', accessToken)
   } catch (error) {
     next(error)
   }
-}
+};
 
-// create stripe connect account link
+// Get logged in seller
+export const getSeller = async(
+  req: any, res: Response, next: NextFunction
+) => {
+  try {
+    const seller = req.seller;
+    res.status(201).json({
+      success: true,
+      seller
+    })
+  } catch(error) {
+    next(error)
+  }
+};
