@@ -1,4 +1,6 @@
 'use client';
+import { StripeLogo } from '@/assets/svgs/stripe-logo';
+import CreateShop from '@/shared/modules/auth/create-shop';
 import { useMutation } from '@tanstack/react-query';
 import axios, { AxiosError } from 'axios';
 import { Eye, EyeOff, Store, Landmark, UserRound } from 'lucide-react';
@@ -16,16 +18,16 @@ const STEPS = [
 ];
 
 const Signup = () => {
-  const [activeStep, setActiveStep] = useState(1);
+  const [activeStep, setActiveStep] = useState(3);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [canResend, setCanResend] = useState(false);
   const [timer, setTimer] = useState(60);
   const [showOtp, setShowOtp] = useState(false);
   const [otp, setOtp] = useState<string[]>(['', '', '', '']);
-  const [userData, setUserData] = useState<FormData | null>(null);
+  const [sellerData, setSellerData] = useState<FormData | null>(null);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
-
+  const [sellerId, setSellerId] = useState("")
   const router = useRouter();
 
   const {
@@ -55,30 +57,33 @@ const Signup = () => {
 
   const verifyOtpMutation = useMutation({
     mutationFn: async () => {
-      if (!userData) return;
+      if (!sellerData) return;
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/verify-user`,
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/verify-seller`,
         {
-          ...userData,
+          ...sellerData,
           otp: otp.join(''),
         },
       );
       return response.data;
     },
-    onSuccess: () => router.push('/login'),
+    onSuccess: (data) => {
+      setSellerId(data?.seller?.id)
+      setActiveStep(2)
+    },
     onError: () => setServerError('Invalid or expired OTP. Please try again.'),
   });
 
   const signupMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/user-registration`,
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/seller-registration`,
         data,
       );
       return response.data;
     },
     onSuccess: (_, formData) => {
-      setUserData(formData);
+      setSellerData(formData);
       setShowOtp(true);
       setCanResend(false);
       setTimer(60);
@@ -131,6 +136,18 @@ const Signup = () => {
         ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
         : 'border-slate-300 focus:border-[#000099] focus:ring-[#000099]/10'
     }`;
+
+    const connectStripe = async (params:type) => {
+      try {
+        const response = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_URI}/api/create-stripe-link`, {sellerId})
+        if(response.data.url) {
+          window.location.href = response.data.url
+      
+        }
+      } catch (error) {
+        console.log(error)
+      }
+    }
 
   return (
     <div className="w-full min-h-screen bg-slate-50 flex flex-col items-center px-4 pt-12 pb-16">
@@ -333,7 +350,7 @@ const Signup = () => {
                 </h3>
                 <p className="text-sm text-slate-500 text-center mb-6">
                   Enter the 4-digit code sent to{' '}
-                  <span className="font-medium text-slate-700">{userData?.email}</span>
+                  <span className="font-medium text-slate-700">{sellerData?.email}</span>
                 </p>
 
                 <div className="flex justify-center gap-3 mb-6">
@@ -387,6 +404,19 @@ const Signup = () => {
             )}
           </>
         )}
+        {activeStep === 2 && (
+          <CreateShop sellerId={sellerId} setActiveStep={setActiveStep}/>
+        )}
+        {activeStep === 3 && (
+          <div className='text-center'>
+            <h3 className='text-2xl font-semibold'>Withdraw Method</h3>
+            <br/>
+            <button onClick={connectStripe}>
+              Connect Stripe <StripeLogo/>
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );
