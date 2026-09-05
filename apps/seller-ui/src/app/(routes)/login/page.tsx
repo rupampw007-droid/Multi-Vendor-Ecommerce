@@ -1,4 +1,6 @@
 'use client';
+import { useMutation } from '@tanstack/react-query';
+import axios, { AxiosError } from 'axios';
 import { EyeIcon, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -14,7 +16,6 @@ const Login = () => {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
   const {
@@ -23,17 +24,32 @@ const Login = () => {
     formState: { errors },
   } = useForm<FormData>();
 
+  const loginMutation = useMutation({
+    mutationFn: async (data: FormData) => {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/api/login-seller`,
+        data,
+        { withCredentials: true },
+      );
+      return response.data
+    },
+    onSuccess: (data) => {
+      setServerError(null);
+      router.push('/')
+    },
+    onError: (error: AxiosError) => {
+      const errorMessage = (error.response?.data as {message?: string})?.message || "Invalid creadentials!"
+      setServerError(errorMessage)
+    }
+  });
+
   const onSubmit = async (data: FormData) => {
-    setIsLoading(true);
-    setServerError(null);
     try {
       // your auth logic here
-      console.log({ ...data, rememberMe });
+      loginMutation.mutate(data)
     } catch (err) {
       setServerError('Invalid email or password. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    } 
   };
 
   return (
@@ -52,6 +68,8 @@ const Login = () => {
               Sign up
             </Link>
           </p>
+          <div className="w-full flex justify-center">
+          </div>
 
           <div className="flex items-center my-5 text-gray-400 text-sm">
             <div className="flex-1 border-t border-gray-300" />
@@ -139,10 +157,10 @@ const Login = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={loginMutation.isPending}
               className="w-full mt-2 py-2.5 bg-[#000099] hover:bg-[#0000cc] disabled:bg-[#000099]/60 disabled:cursor-not-allowed text-white font-semibold rounded transition-colors duration-200"
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {loginMutation?.isPending ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
         </div>
