@@ -31,7 +31,9 @@ export const userRegestration = async (
     const { name, email } = req.body;
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    const existingUser = await prisma.users.findUnique({ where: { email: normalizedEmail } });
+    const existingUser = await prisma.users.findUnique({
+      where: { email: normalizedEmail },
+    });
 
     if (existingUser) {
       throw new ValidationError('User already exist with this email');
@@ -60,7 +62,9 @@ export const verifyUser = async (
     if (!normalizedEmail || !otp || !password || !name) {
       return next(new ValidationError('All fields are required!'));
     }
-    const existingUser = await prisma.users.findUnique({ where: { email: normalizedEmail } });
+    const existingUser = await prisma.users.findUnique({
+      where: { email: normalizedEmail },
+    });
 
     if (existingUser) {
       return next(new ValidationError('User already exists with this email'));
@@ -97,7 +101,9 @@ export const loginUser = async (
     if (!normalizedEmail || !password) {
       throw new ValidationError('Email and Password are required');
     }
-    const user = await prisma.users.findUnique({ where: { email: normalizedEmail } });
+    const user = await prisma.users.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user) {
       throw new AuthError("User doesn't exist");
     }
@@ -106,6 +112,9 @@ export const loginUser = async (
     if (!isMatch) {
       throw new AuthError('Invalid Email or Password');
     }
+
+    res.clearCookie("seller-access-token")
+    res.clearCookie("seller-refresh-token")
 
     // Generate access and refresh token
     const accessToken = jwt.sign(
@@ -166,51 +175,86 @@ export const getUser = async (req: any, res: Response, next: NextFunction) => {
       success: true,
       user,
     });
-  } catch(err) {
-    next(err)
-  } 
-}
+  } catch (err) {
+    next(err);
+  }
+};
 
-export const refreshToken = async (req: Request, res: Response, next : NextFunction) => {
+export const refreshToken = async (
+  req: any,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const refreshToken = req.cookies.refresh_Token
+    const refreshToken =
+      req.cookies['access_token'] ||
+      req.cookies['seller-access-token'] ||
+      req.headers.authorization?.split(' ')[1];
 
-    if(!refreshToken) {
-      throw new ValidationError("Unauthorized! NO refresh token")
+    if (!refreshToken) {
+      throw new ValidationError('Unauthorized! NO refresh token');
     }
     const decoded = jwt.verify(
       refreshToken,
-      process.env.REFRESH_TOKEN_SECRET as string
-    ) as {id: string, role : string}
+      process.env.REFRESH_TOKEN_SECRET as string,
+    ) as { id: string; role: string };
 
-    if(!decoded || !decoded.id || !decoded.role) {
-      return new JsonWebTokenError('Forbidden! Invalid refresh token')
+    if (!decoded || !decoded.id || !decoded.role) {
+      return new JsonWebTokenError('Forbidden! Invalid refresh token');
+    }
+
+    let account;
+    if (decoded.role === 'user') {
+      account = await prisma.users.findUnique({
+        where: { id: decoded.id },
+      });
+    } else if (decoded.role === 'seller') {
+      account = await prisma.sellers.findUnique({
+            where: {
+                id : decoded.id
+            }, include: {shop : true}
+        })
+    }
+
+    if (!account) {
+      return new AuthError('Forbidden! User/Seller not found');
     }
 
     const user = await prisma.users.findUnique({
       where: {
-        id : decoded.id
-      }
-    })
+        id: decoded.id,
+      },
+    });
 
-    if(!user) {
-      return new AuthError("Forbidden! User/Seller not found")
+    if (!user) {
+      return new AuthError('Forbidden! User/Seller not found');
     }
 
-    const newAccessToken = jwt.sign({
-      id : decoded.id, role: decoded.role
-    },
-  process.env.ACCESS_TOKEN_SECRET as string, {
-    expiresIn: "15m"
-  })
-  setCookie(res, "access_token", newAccessToken)
-  return res.status(201).json({
-    success: true
-  })
-  } catch(err) {
-    return next(err)
+    const newAccessToken = jwt.sign(
+      {
+        id: decoded.id,
+        role: decoded.role,
+      },
+      process.env.ACCESS_TOKEN_SECRET as string,
+      {
+        expiresIn: '15m',
+      },
+    );
+
+    if(decoded.role === 'user') {
+      setCookie(res, 'access_token', newAccessToken)
+    } else if(decoded.role === 'seller') {
+      setCookie(res, 'seller-access-token', newAccessToken)
+    }
+    setCookie(res, 'access_token', newAccessToken);
+    req.role = decoded.role;
+    return res.status(201).json({
+      success: true,
+    });
+  } catch (err) {
+    return next(err);
   }
-}
+};
 
 export const resetUserPassword = async (
   req: Request,
@@ -224,7 +268,9 @@ export const resetUserPassword = async (
     if (!normalizedEmail || !newPassword) {
       throw new ValidationError('Email and New Password are required!');
     }
-    const user = await prisma.users.findUnique({ where: { email: normalizedEmail } });
+    const user = await prisma.users.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user) return next(new ValidationError('User not found!'));
 
     //Compare new password with the existing one
@@ -436,6 +482,10 @@ export const loginSeller = async (
     if (!isMatch) {
       return next(new ValidationError('Invalid email or password'));
     }
+
+    res.clearCookie("access_token")
+    res.clearCookie("refresh_token")
+
     const accessToken = jwt.sign(
       {
         id: seller.id,
@@ -445,33 +495,36 @@ export const loginSeller = async (
       { expiresIn: '15m' },
     );
 
-    const refreshToken = jwt.sign({
-      id: seller.id,
-      role: 'seller',
-    },
-  process.env.REFRESH_TOKEN_SECRET as string,
-  {expiresIn: '7d'}
-);
+    const refreshToken = jwt.sign(
+      {
+        id: seller.id,
+        role: 'seller',
+      },
+      process.env.REFRESH_TOKEN_SECRET as string,
+      { expiresIn: '7d' },
+    );
 
-// store refresh token 
-  setCookie(res, 'seller-refresh-token', refreshToken)
-  setCookie(res, 'seller-access-token', accessToken)
+    // store refresh token
+    setCookie(res, 'seller-refresh-token', refreshToken);
+    setCookie(res, 'seller-access-token', accessToken);
   } catch (error) {
-    next(error)
+    next(error);
   }
 };
 
 // Get logged in seller
-export const getSeller = async(
-  req: any, res: Response, next: NextFunction
+export const getSeller = async (
+  req: any,
+  res: Response,
+  next: NextFunction,
 ) => {
   try {
     const seller = req.seller;
     res.status(201).json({
       success: true,
-      seller
-    })
-  } catch(error) {
-    next(error)
+      seller,
+    });
+  } catch (error) {
+    next(error);
   }
 };
