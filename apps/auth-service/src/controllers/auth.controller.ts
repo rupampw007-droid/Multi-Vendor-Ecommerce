@@ -329,8 +329,8 @@ export const verifySeller = async (
   next: NextFunction,
 ) => {
   try {
-    const { email, otp, password, name, phone_number, country } = req.body;
-    if (!email || !otp || !password || !name || !phone_number || !country) {
+    const { email, otp, password, name, phone_number} = req.body;
+    if (!email || !otp || !password || !name || !phone_number) {
       return next(new ValidationError('All fields are required'));
     }
 
@@ -350,7 +350,7 @@ export const verifySeller = async (
         name,
         email,
         password: hashedPassword,
-        country,
+        country: "India",
         phone_number,
       },
     });
