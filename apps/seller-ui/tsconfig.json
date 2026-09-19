@@ -3,6 +3,8 @@
   "compilerOptions": {
     "jsx": "preserve",
     "noEmit": true,
+    "composite": false,
+    "declarationMap": false,
     "emitDeclarationOnly": false,
     "esModuleInterop": true,
     "module": "esnext",
@@ -19,10 +21,11 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@repo/*" : ["../../packages/*"]
     },
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../../",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "include": [

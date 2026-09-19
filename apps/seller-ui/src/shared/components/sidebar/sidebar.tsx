@@ -156,7 +156,7 @@ const SidebarWrapper = () => {
                 title="Logout"
                 href="/"
                 icon={ <LogOut
-                   size={22} color={getIconColor('/dashboard/discount-codes')} />
+                   size={22} color={getIconColor('/dashboard/logout')} />
                 }
               />
             </SidebarMenu>
