@@ -21,6 +21,10 @@ const Page = () => {
   } = useForm();
   const [openImageModal, setOpenImageModal] = useState(false);
   const [images, setImages] = useState<(File | null)[]>([null]);
+  const [isChanged, setIsChanged] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  
 
   const onSubmit = (data: any) => {
     console.log(data);
