@@ -504,9 +504,18 @@ export const loginSeller = async (
       { expiresIn: '7d' },
     );
 
-    // store refresh token
+        // store refresh token
     setCookie(res, 'seller-refresh-token', refreshToken);
     setCookie(res, 'seller-access-token', accessToken);
+
+    return res.status(200).json({
+      message: 'Login Successful',
+      user: {
+        id: seller.id,
+        email: seller.email,
+        name: seller.name,
+      },
+    });
   } catch (error) {
     next(error);
   }
