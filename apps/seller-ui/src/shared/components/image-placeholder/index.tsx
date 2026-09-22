@@ -17,22 +17,31 @@ const ImagePlaceHolder = ({
   onImageChange: (file: File | null, index: number) => void;
   onRemove?: (index: number) => void;
   defaultImage?: string | null;
-  file?: File | null;
+  file?: File | string | null; // <-- allow string too
   index?: number;
   setOpenImageModal: (openImageModal: boolean) => void;
 }) => {
   const [imagePreview, setImagePreview] = useState<string | null>(defaultImage);
 
-  // Derive the preview from the file prop so it stays in sync when slots shift
   useEffect(() => {
     if (!file) {
       setImagePreview(defaultImage);
       return;
     }
+
+    // Already-uploaded image: it's a URL string, not a File — use it directly
+    if (typeof file === 'string') {
+      setImagePreview(file);
+      return;
+    }
+
+    // Not-yet-uploaded image: it's a File — create a local object URL preview
     const url = URL.createObjectURL(file);
     setImagePreview(url);
     return () => URL.revokeObjectURL(url);
   }, [file, defaultImage]);
+
+  // ...rest unchanged
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selected = event.target.files?.[0];

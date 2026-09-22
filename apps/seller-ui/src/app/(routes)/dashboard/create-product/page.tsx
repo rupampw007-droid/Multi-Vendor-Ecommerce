@@ -38,7 +38,7 @@ const Page = () => {
   } = useForm();
 
   const [openImageModal, setOpenImageModal] = useState(false);
-  const [images, setImages] = useState<(File | null)[]>([null]);
+  const [images, setImages] = useState<(File | string | null)[]>([null]);
   const [submitting, setSubmitting] = useState<'create' | 'draft' | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [status, setStatus] = useState<{
@@ -151,27 +151,54 @@ const Page = () => {
     setValue('images' as any, updated as any);
   };
 
-  const handleImageChange = (file: File | null, index: number) => {
-    const updated = [...images];
-    updated[index] = file;
-    if (index === updated.length - 1 && updated.length < MAX_IMAGES) {
-      updated.push(null);
-    }
-    updateImages(updated);
-  };
+  const convertFileToBase64 =(file : File) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error)
+    })
+  }
 
-  const handleRemoveImage = (index: number) => {
-    const updated = [...images];
-    updated.splice(index, 1);
+const handleImageChange = async (file: File | null, index: number) => {
+    if (!file) return;
 
-    // Always keep exactly one empty slot at the end (until the max is reached)
-    if (
-      updated.length === 0 ||
-      (updated[updated.length - 1] !== null && updated.length < MAX_IMAGES)
-    ) {
-      updated.push(null);
+    try {
+      const fileName = await convertFileToBase64(file);
+      const response = await axiosInstance.post('/product/api/upload-product-image', { fileName });
+      const updatedImages = [...images];
+      updatedImages[index] = response.data.file_url;
+
+      if (index === updatedImages.length - 1 && updatedImages.length < 8) {
+        updatedImages.push(null);
+      }
+      setImages(updatedImages);
+      setValue("images", updatedImages);
+    } catch (error) {
+      console.log(error);
     }
-    updateImages(updated);
+};
+
+  const handleRemoveImage = ( index : number) => {
+    try {
+      const updatedImages = [...images]
+
+      const imageToDelete = updatedImages[index]
+      if(imageToDelete && typeof imageToDelete === 'string' ) {
+        // delete our picture
+      }
+
+      updatedImages.splice(index,1)
+
+      // add null placeholder 
+      if(!updatedImages.includes(null) && updateImages.length < 8) {
+        updatedImages.push(null)
+      }
+      setImages(updatedImages)
+      setValue("images", updatedImages)
+    } catch (error) {
+      console.log(error)
+    }
   };
 
   return (
