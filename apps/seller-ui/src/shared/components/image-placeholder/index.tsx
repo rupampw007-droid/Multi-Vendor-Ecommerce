@@ -1,6 +1,21 @@
-import { Pencil, WandSparkles, X } from 'lucide-react';
+'use client';
+
+import { Loader2, Pencil, WandSparkles, X } from 'lucide-react';
 import Image from 'next/image';
 import React, { useEffect, useState } from 'react';
+
+interface ImagePlaceHolderProps {
+  size: string;
+  small?: boolean;
+  onImageChange: (file: File, index: number) => void;
+  onRemove?: (index: number) => void;
+  defaultImage?: string | null;
+  file?: string | null; // the uploaded image's URL, or null if this slot is empty
+  index?: number;
+  isUploading?: boolean;
+  setOpenImageModal: (openImageModal: boolean) => void;
+  onEnhanceClick?: (index: number) => void;
+}
 
 const ImagePlaceHolder = ({
   size,
@@ -10,52 +25,49 @@ const ImagePlaceHolder = ({
   defaultImage = null,
   file = null,
   index = 0,
+  isUploading = false,
   setOpenImageModal,
-}: {
-  size: string;
-  small?: boolean;
-  onImageChange: (file: File | null, index: number) => void;
-  onRemove?: (index: number) => void;
-  defaultImage?: string | null;
-  file?: File | string | null; // <-- allow string too
-  index?: number;
-  setOpenImageModal: (openImageModal: boolean) => void;
-}) => {
-  const [imagePreview, setImagePreview] = useState<string | null>(defaultImage);
+  onEnhanceClick,
+}: ImagePlaceHolderProps) => {
+  // Local object-URL preview shown instantly while the real upload is in
+  // flight; cleared once the real `file_url` comes back from the parent.
+  const [localPreview, setLocalPreview] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!file) {
-      setImagePreview(defaultImage);
-      return;
+    if (file && localPreview) {
+      URL.revokeObjectURL(localPreview);
+      setLocalPreview(null);
     }
+   
+  }, [file]);
 
-    // Already-uploaded image: it's a URL string, not a File — use it directly
-    if (typeof file === 'string') {
-      setImagePreview(file);
-      return;
-    }
+  useEffect(() => {
+    return () => {
+      if (localPreview) URL.revokeObjectURL(localPreview);
+    };
+  }, [localPreview]);
 
-    // Not-yet-uploaded image: it's a File — create a local object URL preview
-    const url = URL.createObjectURL(file);
-    setImagePreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file, defaultImage]);
-
-  // ...rest unchanged
+  const imagePreview = file || defaultImage || localPreview;
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selected = event.target.files?.[0];
     if (selected) {
+      setLocalPreview(URL.createObjectURL(selected));
       onImageChange(selected, index);
     }
     event.target.value = ''; // allow re-selecting the same file
+  };
+
+  const handleEnhanceClick = () => {
+    onEnhanceClick?.(index);
+    setOpenImageModal(true);
   };
 
   return (
     <div
       className={`relative ${
         small ? 'h-[180px]' : 'h-[450px]'
-      } w-full cursor-pointer bg-[#1e1e1e] border border-green-600 rounded-lg flex flex-col justify-center items-center`}
+      } w-full cursor-pointer bg-[#1e1e1e] border border-green-600 rounded-lg flex flex-col justify-center items-center overflow-hidden`}
     >
       <input
         type="file"
@@ -63,9 +75,10 @@ const ImagePlaceHolder = ({
         id={`image-upload-${index}`}
         className="hidden"
         onChange={handleFileChange}
+        disabled={isUploading}
       />
 
-      {imagePreview ? (
+      {imagePreview && !isUploading && (
         <>
           <button
             type="button"
@@ -76,29 +89,35 @@ const ImagePlaceHolder = ({
           </button>
           <button
             type="button"
-            onClick={() => setOpenImageModal(true)}
+            onClick={handleEnhanceClick}
             className="absolute p-2 rounded top-3 right-[70px] bg-blue-500 shadow-lg cursor-pointer z-10"
           >
             <WandSparkles size={16} />
           </button>
         </>
-      ) : (
+      )}
+
+      {!imagePreview && !isUploading && (
         <label
           htmlFor={`image-upload-${index}`}
-          className="absolute top-3 right-3 p-2 !rounded bg-slate-700 shadow-lg cursor-pointer"
+          className="absolute top-3 right-3 p-2 !rounded bg-slate-700 shadow-lg cursor-pointer z-10"
         >
           <Pencil size={16} />
         </label>
       )}
 
-      {imagePreview ? (
+      {isUploading ? (
+        <div className="flex flex-col items-center gap-2 text-gray-300">
+          <Loader2 className="animate-spin" size={small ? 24 : 36} />
+          <p className={small ? 'text-xs' : 'text-sm'}>Uploading...</p>
+        </div>
+      ) : imagePreview ? (
         <Image
-          width={400}
-          height={300}
           src={imagePreview}
           alt="uploaded"
+          fill
           unoptimized
-          className="w-full h-full object-cover rounded-lg"
+          className="object-cover rounded-lg"
         />
       ) : (
         <>
