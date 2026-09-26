@@ -1,4 +1,5 @@
 import { NotFoundError, ValidationError } from '@repo/error-handler';
+import { imagekit } from '@repo/lib/imagekit';
 import prisma from '@repo/lib/prisma/prisma';
 import { Request, Response, NextFunction } from 'express';
 
@@ -122,4 +123,37 @@ export const deleteDiscountCode = async (
     } catch (error) {
         next(error)
     }
+}
+
+// Upload product image
+export const uploadProductImage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const {fileName} = req.body;
+    const response = await imagekit.files.upload({
+      file: fileName,
+      fileName: `product-${Date.now()}.jpg`,
+      folder: '/products'
+    });
+    res.status(201).json({
+      file_url: response.url,
+      fileId: response.fileId
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+// delete product image
+export const deleteProductImage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const {fileId} = req.body
+    const response = await imagekit.files.delete(fileId)
+
+    res.status(201).json({
+      success : true,
+      response
+    })
+  } catch (error) {
+    next(error)
+  }
 }

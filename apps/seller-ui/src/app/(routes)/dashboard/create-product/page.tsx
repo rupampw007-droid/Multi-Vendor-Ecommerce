@@ -1,7 +1,7 @@
 'use client';
 
 import ImagePlaceHolder from '@/shared/components/image-placeholder';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import Input from '@repo/components/input';
@@ -13,6 +13,12 @@ import axiosInstance from '@/utils/axiosInstance';
 import RichTextEditor from '@repo/components/rich-text-editor';
 import SizeSelector from '@repo/components/size-selector';
 import DiscountCodeInput from '@repo/components/discount-code-input';
+import Image from 'next/image';
+
+interface UploadedImage {
+  fileId: string;
+  file_url: string;
+}
 
 const MAX_IMAGES = 8;
 
@@ -38,13 +44,21 @@ const Page = () => {
   } = useForm();
 
   const [openImageModal, setOpenImageModal] = useState(false);
-  const [images, setImages] = useState<(File | null)[]>([null]);
-  const [submitting, setSubmitting] = useState<'create' | 'draft' | null>(null);
+  const [images, setImages] = useState<(UploadedImage | null)[]>([null]);
+  const [uploadingIndexes, setUploadingIndexes] = useState<Set<number>>(
+    new Set()
+  );
+  const [submitting, setSubmitting] = useState<'create' | 'draft' | null>(
+    null
+  );
   const [draftId, setDraftId] = useState<string | null>(null);
   const [status, setStatus] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [selectedImage, setSelectedImage] = useState<UploadedImage | null>(
+    null
+  );
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['categories'],
@@ -78,7 +92,7 @@ const Page = () => {
     const formData = new FormData();
 
     Object.entries(values).forEach(([key, value]) => {
-      if (key === 'images') return; // files are appended separately below
+      if (key === 'images') return; // images are handled separately below
       if (value === undefined || value === null || Number.isNaN(value)) return;
       formData.append(
         key,
@@ -86,9 +100,12 @@ const Page = () => {
       );
     });
 
-    images.forEach((file) => {
-      if (file) formData.append('images', file);
-    });
+    // Images are already uploaded to the image service at selection time,
+    // so we just send along their identifiers/urls rather than raw files.
+    const uploadedImages = images.filter(
+      (img): img is UploadedImage => img !== null
+    );
+    formData.append('images', JSON.stringify(uploadedImages));
 
     formData.append('status', productStatus);
     if (draftId) formData.append('id', draftId);
@@ -146,32 +163,85 @@ const Page = () => {
     submitProduct(getValues(), 'draft');
   };
 
-  const updateImages = (updated: (File | null)[]) => {
-    setImages(updated);
-    setValue('images' as any, updated as any);
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
   };
 
-  const handleImageChange = (file: File | null, index: number) => {
-    const updated = [...images];
-    updated[index] = file;
-    if (index === updated.length - 1 && updated.length < MAX_IMAGES) {
-      updated.push(null);
+  const handleImageChange = async (file: File, index: number) => {
+    setUploadingIndexes((prev) => new Set(prev).add(index));
+
+    try {
+      const fileName = await convertFileToBase64(file);
+      const response = await axiosInstance.post(
+        '/product/api/upload-product-image',
+        { fileName }
+      );
+      const uploadedImage: UploadedImage = {
+        fileId: response.data.fileId,
+        file_url: response.data.file_url,
+      };
+
+      setImages((prev) => {
+        const updated = [...prev];
+        updated[index] = uploadedImage;
+
+        if (index === updated.length - 1 && updated.length < MAX_IMAGES) {
+          updated.push(null);
+        }
+
+        setValue('images', updated);
+        return updated;
+      });
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setUploadingIndexes((prev) => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
     }
-    updateImages(updated);
   };
 
-  const handleRemoveImage = (index: number) => {
-    const updated = [...images];
-    updated.splice(index, 1);
+  const handleRemoveImage = async (index: number) => {
+    try {
+      const imageToDelete = images[index];
 
-    // Always keep exactly one empty slot at the end (until the max is reached)
-    if (
-      updated.length === 0 ||
-      (updated[updated.length - 1] !== null && updated.length < MAX_IMAGES)
-    ) {
-      updated.push(null);
+      if (imageToDelete) {
+        await axiosInstance.delete('/product/api/delete-product-image', {
+          data: { fileId: imageToDelete.fileId },
+        });
+      }
+
+      setImages((prev) => {
+        const updated = [...prev];
+        updated.splice(index, 1);
+
+        if (!updated.includes(null) && updated.length < MAX_IMAGES) {
+          updated.push(null);
+        }
+
+        setValue('images', updated);
+        return updated;
+      });
+    } catch (error) {
+      console.log(error);
     }
-    updateImages(updated);
+  };
+
+  const handleEnhanceClick = (index: number) => {
+    const img = images[index];
+    if (img) setSelectedImage(img);
+  };
+
+  const closeImageModal = () => {
+    setOpenImageModal(false);
+    setSelectedImage(null);
   };
 
   return (
@@ -198,23 +268,30 @@ const Page = () => {
             size="765*850"
             small={false}
             index={0}
-            file={images[0]}
+            file={images[0]?.file_url ?? null}
+            isUploading={uploadingIndexes.has(0)}
             onImageChange={handleImageChange}
             onRemove={handleRemoveImage}
+            onEnhanceClick={handleEnhanceClick}
           />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-3">
-            {images.slice(1).map((file, i) => (
-              <ImagePlaceHolder
-                key={i + 1}
-                setOpenImageModal={setOpenImageModal}
-                size="765*850"
-                small
-                index={i + 1}
-                file={file}
-                onImageChange={handleImageChange}
-                onRemove={handleRemoveImage}
-              />
-            ))}
+            {images.slice(1).map((file, i) => {
+              const index = i + 1;
+              return (
+                <ImagePlaceHolder
+                  key={index}
+                  setOpenImageModal={setOpenImageModal}
+                  size="765*850"
+                  small
+                  index={index}
+                  file={file?.file_url ?? null}
+                  isUploading={uploadingIndexes.has(index)}
+                  onImageChange={handleImageChange}
+                  onRemove={handleRemoveImage}
+                  onEnhanceClick={handleEnhanceClick}
+                />
+              );
+            })}
           </div>
         </div>
 
@@ -363,12 +440,6 @@ const Page = () => {
                 control={control}
                 register={register as any}
               />
-              {/* {
-                  "custom_specifications": [
-                    { "name": "Battery Life", "value": "40 hours" },
-                    { "name": "Weight", "value": "250 g" }
-                  ]
-} */}
             </div>
 
             {/* Custom properties */}
@@ -384,13 +455,6 @@ const Page = () => {
                   />
                 )}
               />
-
-              {/* {
-  "custom_properties": [
-    { "label": "Size", "values": ["S", "M", "L"] },
-    { "label": "Material", "values": ["Cotton", "Polyester"] }
-  ]
-} */}
             </div>
 
             {/* Cash on delivery */}
@@ -665,6 +729,33 @@ const Page = () => {
             </div>
           </div>
         </div>
+
+        {openImageModal && selectedImage && (
+          <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black bg-opacity-60 z-50">
+            <div className="bg-gray-800 p-6 rounded-lg w-[450px] max-w-[90vw] text-white">
+              <div className="flex justify-between items-center pb-3 mb-4">
+                <h2 className="text-lg font-semibold">
+                  Enhance Product Image
+                </h2>
+                <X
+                  size={20}
+                  className="cursor-pointer"
+                  onClick={closeImageModal}
+                />
+              </div>
+              <div className="relative w-full h-[300px] rounded-md overflow-hidden bg-black/20">
+                <Image
+                  src={selectedImage.file_url}
+                  alt="Product to enhance"
+                  fill
+                  unoptimized
+                  className="object-contain"
+                />
+              </div>
+              {/* Enhancement controls (e.g. brightness, background removal) go here */}
+            </div>
+          </div>
+        )}
       </div>
     </form>
   );
