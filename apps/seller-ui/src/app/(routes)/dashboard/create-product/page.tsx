@@ -14,6 +14,7 @@ import RichTextEditor from '@repo/components/rich-text-editor';
 import SizeSelector from '@repo/components/size-selector';
 import DiscountCodeInput from '@repo/components/discount-code-input';
 import Image from 'next/image';
+import { enhancements } from '@/utils/AI.enhancements';  // adjust path to wherever you place the array
 
 interface UploadedImage {
   fileId: string;
@@ -59,6 +60,10 @@ const Page = () => {
   const [selectedImage, setSelectedImage] = useState<UploadedImage | null>(
     null
   );
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [activeEffect, setActiveEffect] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['categories'],
@@ -236,12 +241,69 @@ const Page = () => {
 
   const handleEnhanceClick = (index: number) => {
     const img = images[index];
-    if (img) setSelectedImage(img);
+    if (!img) return;
+    setSelectedImage(img);
+    setSelectedIndex(index);
+    setActiveEffect(null);
+    setPreviewUrl(null);
   };
 
   const closeImageModal = () => {
     setOpenImageModal(false);
     setSelectedImage(null);
+    setSelectedIndex(null);
+    setActiveEffect(null);
+    setPreviewUrl(null);
+  };
+
+  // Always transforms from the original uploaded URL so effects replace
+  // rather than stack, and preloads the result so the loading state
+  // reflects ImageKit actually generating the transformed asset.
+  const applyTransformation = async (effect: string) => {
+    if (!selectedImage || processing) return;
+
+    setProcessing(true);
+    setActiveEffect(effect);
+
+    try {
+      const transformedUrl = `${selectedImage.file_url}?tr=${effect}`;
+
+      await new Promise<void>((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to apply effect'));
+        img.src = transformedUrl;
+      });
+
+      setPreviewUrl(transformedUrl);
+    } catch (error) {
+      console.log(error);
+      setActiveEffect(null);
+      setStatus({
+        type: 'error',
+        text: 'Could not apply enhancement, please try again',
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const resetTransformation = () => {
+    setActiveEffect(null);
+    setPreviewUrl(null);
+  };
+
+  const handleUseEnhancedImage = () => {
+    if (selectedIndex === null || !selectedImage || !previewUrl) return;
+
+    setImages((prev) => {
+      const updated = [...prev];
+      updated[selectedIndex] = { ...selectedImage, file_url: previewUrl };
+      setValue('images', updated);
+      return updated;
+    });
+
+    closeImageModal();
   };
 
   return (
@@ -743,16 +805,63 @@ const Page = () => {
                   onClick={closeImageModal}
                 />
               </div>
+
               <div className="relative w-full h-[300px] rounded-md overflow-hidden bg-black/20">
                 <Image
-                  src={selectedImage.file_url}
+                  src={previewUrl || selectedImage.file_url}
                   alt="Product to enhance"
                   fill
                   unoptimized
                   className="object-contain"
                 />
+                {processing && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60">
+                    <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span className="text-xs text-white/80">
+                      Enhancing image...
+                    </span>
+                  </div>
+                )}
               </div>
-              {/* Enhancement controls (e.g. brightness, background removal) go here */}
+
+              <div className="grid grid-cols-2 gap-2 mt-4">
+                {enhancements.map((item: (typeof enhancements)[number]) => (
+                  <button
+                    key={item.effect}
+                    type="button"
+                    disabled={processing}
+                    onClick={() => applyTransformation(item.effect)}
+                    className={`px-3 py-2 rounded-md text-sm border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      activeEffect === item.effect
+                        ? 'border-[#80deea] bg-[#80deea]/10 text-[#80deea]'
+                        : 'border-gray-600 text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {processing && activeEffect === item.effect
+                      ? 'Applying...'
+                      : item.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={resetTransformation}
+                  disabled={processing || !previewUrl}
+                  className="px-4 py-2 rounded-md border border-gray-600 text-white text-sm hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUseEnhancedImage}
+                  disabled={processing || !previewUrl}
+                  className="px-4 py-2 rounded-md bg-[#80deea] text-black text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Use this image
+                </button>
+              </div>
             </div>
           </div>
         )}
