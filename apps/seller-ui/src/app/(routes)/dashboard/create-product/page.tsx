@@ -90,31 +90,26 @@ const Page = () => {
     return selectedCategory ? subCategoriesData[selectedCategory] || [] : [];
   }, [selectedCategory, subCategoriesData]);
 
-  const buildFormData = (
+  const buildProductPayload = (
     values: Record<string, any>,
     productStatus: 'published' | 'draft'
   ) => {
-    const formData = new FormData();
+    const {
+      subcategory,
+      custom_properties,
+      discount_codes,
+      ...productValues
+    } = values;
 
-    Object.entries(values).forEach(([key, value]) => {
-      if (key === 'images') return; // images are handled separately below
-      if (value === undefined || value === null || Number.isNaN(value)) return;
-      formData.append(
-        key,
-        typeof value === 'object' ? JSON.stringify(value) : String(value)
-      );
-    });
-
-    // Images are already uploaded to the image service at selection time,
-    // so we just send along their identifiers/urls rather than raw files.
-    const uploadedImages = images.filter(
-      (img): img is UploadedImage => img !== null
-    );
-    formData.append('images', JSON.stringify(uploadedImages));
-
-    formData.append('status', productStatus);
-    if (draftId) formData.append('id', draftId);
-    return formData;
+    return {
+      ...productValues,
+      subCategory: subcategory,
+      customProperties: custom_properties,
+      discountCodes: discount_codes,
+      images: images.filter((img): img is UploadedImage => img !== null),
+      status: productStatus,
+      ...(draftId ? { id: draftId } : {}),
+    };
   };
 
   const submitProduct = async (
@@ -127,8 +122,7 @@ const Page = () => {
     try {
       const res = await axiosInstance.post(
         '/product/api/create-product',
-        buildFormData(values, productStatus),
-        { headers: { 'Content-Type': 'multipart/form-data' } }
+        buildProductPayload(values, productStatus)
       );
 
       if (productStatus === 'draft') {
@@ -365,7 +359,11 @@ const Page = () => {
               <Input
                 label="Product Title *"
                 placeholder="Enter product title"
-                {...register('title' as any, { required: 'Title is required' })}
+                {...register('title' as any, {
+                  required: 'Title is required',
+                  validate: (value: string) =>
+                    Boolean(value.trim()) || 'Title is required',
+                })}
               />
               {errors.title && (
                 <p className="text-red-500 text-xs mt-1">
@@ -382,7 +380,7 @@ const Page = () => {
                 cols={10}
                 label="Short Description * (Max 150 words)"
                 placeholder="Enter product description for quick view"
-                {...register('description' as any, {
+                {...register('short_description' as any, {
                   required: 'Description is required',
                   validate: (value: string) => {
                     const wordCount = value.trim().split(/\s+/).length;
@@ -393,9 +391,9 @@ const Page = () => {
                   },
                 })}
               />
-              {errors.description && (
+              {errors.short_description && (
                 <p className="text-red-500 text-xs mt-1">
-                  {errors.description.message as string}
+                  {errors.short_description.message as string}
                 </p>
               )}
             </div>
