@@ -1,6 +1,5 @@
 "use client"
-import React from 'react'
-import {useAtom} from 'jotai'
+import { useAtom } from 'jotai'
 import { activeSidebarItem } from '@/configs/constants'
 
 const useSidebar = () => {

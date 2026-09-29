@@ -1,6 +1,4 @@
 import axios from 'axios'
-import { refresh } from 'next/cache';
-import { callbackPromise } from 'nodemailer/lib/shared';
 
 const axiosInstance = axios.create({
     baseURL: process.env.NEXT_PUBLIC_SERVER_URI,
