@@ -5,7 +5,6 @@ import { useMutation } from '@tanstack/react-query';
 import axios, { AxiosError } from 'axios';
 import { Eye, EyeOff, Store, Landmark, UserRound } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import React, { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -25,10 +24,9 @@ const Signup = () => {
   const [timer, setTimer] = useState(60);
   const [showOtp, setShowOtp] = useState(false);
   const [otp, setOtp] = useState<string[]>(['', '', '', '']);
-  const [sellerData, setSellerData] = useState<FormData | null>(null);
+  const [sellerData, setSellerData] = useState<any | null>(null);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [sellerId, setSellerId] = useState("")
-  const router = useRouter();
 
   const {
     register,
@@ -137,17 +135,16 @@ const Signup = () => {
         : 'border-slate-300 focus:border-[#000099] focus:ring-[#000099]/10'
     }`;
 
-    const connectStripe = async (params:type) => {
+    const connectStripe = async () => {
       try {
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_URI}/api/create-stripe-link`, {sellerId})
-        if(response.data.url) {
-          window.location.href = response.data.url
-      
+        const response = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_URI}/api/create-stripe-link`, { sellerId });
+        if (response.data.url) {
+          window.location.href = response.data.url;
         }
       } catch (error) {
-        console.log(error)
+        console.log(error);
       }
-    }
+    };
 
   return (
     <div className="w-full min-h-screen bg-slate-50 flex flex-col items-center px-4 pt-12 pb-16">

@@ -1,4 +1,5 @@
 import express from 'express';
+import "./jobs/product-crone.job"
 import cors from 'cors'
 import { errorMiddleWare } from '@repo/error-handler/error-middleware';
 import cookieParser from 'cookie-parser';

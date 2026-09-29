@@ -19,8 +19,8 @@ model images {
   id        String       @id @default(auto()) @map("_id") @db.ObjectId
   file_id   String
   url       String
-  usersId   String?     @db.ObjectId @unique
-  shopId    String?     @unique @db.ObjectId
+  usersId   String?     @db.ObjectId
+  shopId    String?     @db.ObjectId
   users     users?       @relation(fields: [usersId], references: [id])
   shops    shops?       @relation(fields: [shopId], references: [id])
   productIds String[] @db.ObjectId
@@ -33,7 +33,7 @@ model users {
   email     String       @unique
   password  String? 
   following String[]    
-  avatar    images?
+  avatars   images[]
   shopReviews shopReviews[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -55,7 +55,7 @@ model shops {
   name    String
   bio     String?
   category String
-  avatar  images?
+  avatars images[]
   converBanner String?
   address String
   opening_hours  String?
