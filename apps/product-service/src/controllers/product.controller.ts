@@ -1,3 +1,4 @@
+import { Prisma } from '@multivendor-ecommerce/generated/prisma/client';
 import { AuthError, NotFoundError, ValidationError } from '@repo/error-handler';
 import { imagekit } from '@repo/lib/imagekit';
 import prisma from '@repo/lib/prisma/prisma';
@@ -506,6 +507,79 @@ export const recoverDeletedProduct = async (
     return res.status(200).json({
       message: 'Product recovered successfully!',
     });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// get all products
+export const getAllProducts = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const skip = (page - 1) * limit;
+    const type = req.query.type;
+    const now = new Date();
+
+    const baseFilter: Prisma.productsWhereInput = {
+      status: 'Active',
+      isDeleted: false,
+      AND: [
+        {
+          OR: [
+            { starting_date: null },
+            { starting_date: { isSet: false } },
+            { starting_date: { lte: now } },
+          ],
+        },
+        {
+          OR: [
+            { ending_date: null },
+            { ending_date: { isSet: false } },
+            { ending_date: { gte: now } },
+          ],
+        },
+      ],
+    };
+
+    const orderBy: Prisma.productsOrderByWithRelationInput =
+      type === 'latest'
+        ? { createdAt: 'desc' }
+        : { totalSales: 'desc' };
+
+    const [products, total, top10Products] = await Promise.all([
+      prisma.products.findMany({
+        skip,
+        take: limit,
+        include: {
+          images: true,
+          Shop: true,
+        },
+        where: baseFilter,
+        orderBy,
+      }),
+
+      prisma.products.count({ where: baseFilter }),
+      prisma.products.findMany({
+        take: 10,
+        where: baseFilter,
+        orderBy,
+      })
+    ]);
+
+    res.status(200).json({
+      products,
+      top10By: type === 'latest' ? 'latest' : 'topSales',
+      top10Products,
+      total,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+    });
+
   } catch (error) {
     return next(error);
   }

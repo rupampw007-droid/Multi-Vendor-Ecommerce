@@ -136,5 +136,6 @@ model products {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   shopId      String    @db.ObjectId
+  totalSales  Int       @default(0)
   Shop        shops     @relation(fields: [shopId], references: [id])
 }

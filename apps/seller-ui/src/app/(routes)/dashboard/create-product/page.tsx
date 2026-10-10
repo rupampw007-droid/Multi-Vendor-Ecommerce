@@ -68,12 +68,8 @@ const Page = () => {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
-      try {
-        const res = await axiosInstance.get('/product/api/get-categories');
-        return res.data;
-      } catch (error) {
-        console.log(error);
-      }
+      const res = await axiosInstance.get('/product/api/get-categories');
+      return res.data;
     },
     staleTime: 1000 * 60 * 5, //Caching for 5mins
     retry: 2,
