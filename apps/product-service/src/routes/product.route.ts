@@ -1,5 +1,5 @@
 import express, {Router} from 'express'
-import { createDiscountCodes, createProduct, deleteDiscountCode, deleteProduct, deleteProductImage, getCategories, getDiscountCodes, getShopProducts, recoverDeletedProduct, uploadProductImage } from '../controllers/product.controller';
+import { createDiscountCodes, createProduct, deleteDiscountCode, deleteProduct, deleteProductImage, getAllProducts, getCategories, getDiscountCodes, getShopProducts, recoverDeletedProduct, uploadProductImage } from '../controllers/product.controller';
 import isAuthenticated from '@repo/middleware/isAuthenticated';
 
 const router: Router = express.Router();
@@ -14,4 +14,5 @@ router.post('/create-product', isAuthenticated, createProduct)
 router.get('/get-shop-products', isAuthenticated, getShopProducts)
 router.delete('/delete-product/:id', isAuthenticated, deleteProduct)
 router.put('/recover-deleted-product/:id', isAuthenticated, recoverDeletedProduct)
+router.get('/get-all-products', getAllProducts)
 export default router

@@ -48,7 +48,8 @@
     "react-quill-new": "^3.8.3",
     "stripe": "^22.6.0",
     "styled-components": "^6.5.3",
-    "swagger-autogen": "^2.23.7"
+    "swagger-autogen": "^2.23.7",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",
