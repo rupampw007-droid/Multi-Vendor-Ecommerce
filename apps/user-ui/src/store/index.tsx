@@ -10,38 +10,35 @@ type Product = {
     shopId: string
 }
 
-type Location = {
-    country: string
-    city: string
-} | null
-
 type Store = {
     cart: Product[]
     wishlist: Product[]
     addToCart: (
         product: Product,
         user: any,
-        location: Location,
+        location: string,
         deviceInfo: string
     ) => void
     removeFromCart: (
         id: string,
         user: any,
-        location: Location,
+        location: string,
         deviceInfo: string
     ) => void
     addToWishlist: (
         product: Product,
         user: any,
-        location: Location,
+        location: string,
         deviceInfo: string
     ) => void
     removeFromWishlist: (
         id: string,
         user: any,
-        location: Location,
+        location: string,
         deviceInfo: string
     ) => void
+    updateWishlistQuantity: (id: string, quantity: number) => void
+    updateCartQuantity: (id: string, quantity: number) => void
 }
 
 export const useStore = create<Store>()(
@@ -51,19 +48,20 @@ export const useStore = create<Store>()(
             wishlist: [],
 
             addToCart: (product, user, location, deviceInfo) => {
+                const qty = Math.max(1, product.quantity ?? 1)
                 set((state) => {
                     const existing = state.cart.find((item) => item.id === product.id)
                     if (existing) {
                         return {
                             cart: state.cart.map((item) =>
                                 item.id === product.id
-                                    ? { ...item, quantity: (item.quantity ?? 1) + 1 }
+                                    ? { ...item, quantity: (item.quantity ?? 1) + qty }
                                     : item
                             ),
                         }
                     }
                     return {
-                        cart: [...state.cart, { ...product, quantity: product.quantity ?? 1 }],
+                        cart: [...state.cart, { ...product, quantity: qty }],
                     }
                 })
             },
@@ -80,7 +78,7 @@ export const useStore = create<Store>()(
             addToWishlist: (product, user, location, deviceInfo) => {
                 set((state) => {
                     if (state.wishlist.find((item) => item.id === product.id)) return state
-                    return { wishlist: [...state.wishlist, product] }
+                    return { wishlist: [...state.wishlist, { ...product, quantity: product.quantity ?? 1 }] }
                 })
             },
 
@@ -89,6 +87,24 @@ export const useStore = create<Store>()(
 
                 set((state) => ({
                     wishlist: state.wishlist.filter((item) => item.id !== id),
+                }))
+            },
+
+            updateWishlistQuantity: (id, quantity) => {
+                const next = Math.max(1, quantity)
+                set((state) => ({
+                    wishlist: state.wishlist.map((item) =>
+                        item.id === id ? { ...item, quantity: next } : item
+                    ),
+                }))
+            },
+
+            updateCartQuantity: (id, quantity) => {
+                const next = Math.max(1, quantity)
+                set((state) => ({
+                    cart: state.cart.map((item) =>
+                        item.id === id ? { ...item, quantity: next } : item
+                    ),
                 }))
             },
         }),
