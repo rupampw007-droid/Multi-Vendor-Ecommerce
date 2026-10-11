@@ -7,9 +7,12 @@ import Link from 'next/link';
 import React from 'react';
 import HeaderBottom from './header-bottom';
 import useUser from '@/hooks/useUser';
+import { useStore } from '@/store';
 
 const Header = () => {
   const { user, isLoading } = useUser();
+  const wishListCount = useStore((state) => state.wishlist?.length ?? 0)
+  const cartCount = useStore((state) => state.cart?.length ?? 0)
   return (
     <div className="w-full bg-white">
       {/* Top bar */}
@@ -63,14 +66,14 @@ const Header = () => {
           <Link href={'/wishlist'} className="relative">
             <HeartIcon />
             <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
-              <span className="text-white font-medium text-[10px]">0</span>
+              <span className="text-white font-medium text-[10px]">{wishListCount}</span>
             </div>
           </Link>
 
           <Link href={'/cart'} className="relative">
             <CartIcon />
             <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
-              <span className="text-white font-medium text-[10px]">0</span>
+              <span className="text-white font-medium text-[10px]">{cartCount}</span>
             </div>
           </Link>
         </div>
