@@ -10,31 +10,36 @@ type Product = {
     shopId: string
 }
 
+type Location = {
+    country: string
+    city: string
+} | null
+
 type Store = {
     cart: Product[]
     wishlist: Product[]
     addToCart: (
         product: Product,
         user: any,
-        location: string,
+        location: Location,
         deviceInfo: string
     ) => void
     removeFromCart: (
         id: string,
         user: any,
-        location: string,
+        location: Location,
         deviceInfo: string
     ) => void
     addToWishlist: (
         product: Product,
         user: any,
-        location: string,
+        location: Location,
         deviceInfo: string
     ) => void
     removeFromWishlist: (
         id: string,
         user: any,
-        location: string,
+        location: Location,
         deviceInfo: string
     ) => void
 }

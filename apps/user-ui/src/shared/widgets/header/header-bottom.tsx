@@ -4,6 +4,7 @@ import { CartIcon } from '@/assets/svgs/cart-icon';
 import ProfileIcon from '@/assets/svgs/profie-icon';
 import { navItems } from '@/configs/constants';
 import useUser from '@/hooks/useUser';
+import { useStore } from '@/store';
 import { AlignLeft, ChevronDownIcon, HeartIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -12,6 +13,8 @@ const HeaderBottom = () => {
   const [show, setShow] = useState(false);
   const [isSticky, setIsSticky] = useState(false);
   const {user, isLoading} = useUser()
+  const wishListCount = useStore((state) => state.wishlist?.length ?? 0)
+  const cartCount = useStore((state) => state.cart?.length ?? 0)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -91,14 +94,14 @@ const HeaderBottom = () => {
           <Link href={'/wishlist'} className="relative">
             <HeartIcon />
             <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
-              <span className="text-white font-medium text-[10px]">0</span>
+              <span className="text-white font-medium text-[10px]">{wishListCount}</span>
             </div>
           </Link>
 
           <Link href={'/cart'} className="relative">
             <CartIcon />
             <div className="w-5 h-5 border-2 border-white bg-red-500 rounded-full flex items-center justify-center absolute -top-2 -right-2">
-              <span className="text-white font-medium text-[10px]">0</span>
+              <span className="text-white font-medium text-[10px]">{cartCount}</span>
             </div>
           </Link>
         </div>

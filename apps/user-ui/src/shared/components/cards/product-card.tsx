@@ -3,6 +3,10 @@
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Heart, ShoppingCart, Eye, Star, Timer } from 'lucide-react'
+import { useStore } from '@/store'
+import useUser from '@/hooks/useUser'
+import useLocationTracking from '@/hooks/useLocationTracking'
+import useDeviceTracking from '@/hooks/useDeviceTracking'
 
 const formatINR = (value?: number) =>
   typeof value === 'number'
@@ -31,7 +35,22 @@ const ProductCard = ({
   isEvent?: boolean
 }) => {
   const [timeLeft, setTimeLeft] = useState<string | null>(null)
-  const [wishlisted, setWishlisted] = useState(false)
+  const { user } = useUser()
+  const location = useLocationTracking()
+  const deviceInfo = useDeviceTracking()
+
+  // Store actions (names must match the store exactly)
+  const addToCart = useStore((s) => s.addToCart)
+  const addToWishlist = useStore((s) => s.addToWishlist)
+  const removeFromWishlist = useStore((s) => s.removeFromWishlist)
+
+  // Derived state: subscribe to the item itself so the card re-renders on change
+  const cartItem = useStore((s) => s.cart.find((i) => i.id === product?.id))
+  const isWishlisted = useStore((s) =>
+    s.wishlist.some((i) => i.id === product?.id)
+  )
+  const cartQty = cartItem?.quantity ?? 0
+  const isInCart = !!cartItem
 
   useEffect(() => {
     if (!isEvent) return
@@ -53,8 +72,42 @@ const ProductCard = ({
   const discountPercent = hasDiscount
     ? Math.round(((regularPrice - salePrice) / regularPrice) * 100)
     : 0
-  const outOfStock = typeof product?.stock === 'number' && product.stock <= 0
+  const currentPrice: number = salePrice ?? regularPrice ?? 0
+  const stock = typeof product?.stock === 'number' ? product.stock : undefined
+  const outOfStock = stock !== undefined && stock <= 0
+  const maxedOut = stock !== undefined && cartQty >= stock
   const rating = Number(product?.ratings ?? 0)
+
+  // Shape the API product into what the store expects
+  const storeProduct = {
+    id: product?.id as string,
+    title: product?.title as string,
+    price: currentPrice,
+    image,
+    quantity: 1,
+    shopId: (product?.Shop?.id ?? product?.shopId ?? '') as string,
+  }
+
+  const handleWishlist = () => {
+    if (isWishlisted) {
+      removeFromWishlist(product.id, user, location, deviceInfo)
+    } else {
+      addToWishlist(storeProduct, user, location, deviceInfo)
+    }
+  }
+
+  const handleAddToCart = () => {
+    if (outOfStock || maxedOut) return
+    addToCart(storeProduct, user, location, deviceInfo)
+  }
+
+  const buttonLabel = outOfStock
+    ? 'Unavailable'
+    : maxedOut
+      ? `Max in cart (${cartQty})`
+      : isInCart
+        ? `In cart (${cartQty}) · Add more`
+        : 'Add to cart'
 
   return (
     <div className="group relative w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-lg">
@@ -77,23 +130,26 @@ const ProductCard = ({
         )}
       </div>
 
-      {/* Hover actions */}
-      <div className="absolute right-3 top-3 z-10 flex flex-col gap-2 opacity-0 transition group-hover:opacity-100">
+      {/* Actions: heart stays visible when wishlisted, rest on hover */}
+      <div className="absolute right-3 top-3 z-10 flex flex-col gap-2">
         <button
           type="button"
-          aria-label="Add to wishlist"
-          onClick={() => setWishlisted((prev) => !prev)}
-          className="rounded-full bg-white p-2 shadow hover:bg-gray-100"
+          aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+          aria-pressed={isWishlisted}
+          onClick={handleWishlist}
+          className={`rounded-full bg-white p-2 shadow transition hover:bg-gray-100 ${
+            isWishlisted ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
         >
           <Heart
             size={16}
-            className={wishlisted ? 'fill-red-500 text-red-500' : 'text-gray-600'}
+            className={isWishlisted ? 'fill-red-500 text-red-500' : 'text-gray-600'}
           />
         </button>
         <Link
           href={`/product/${product?.slug}`}
           aria-label="Quick view"
-          className="rounded-full bg-white p-2 shadow hover:bg-gray-100"
+          className="rounded-full bg-white p-2 opacity-0 shadow transition hover:bg-gray-100 group-hover:opacity-100"
         >
           <Eye size={16} className="text-gray-600" />
         </Link>
@@ -137,7 +193,7 @@ const ProductCard = ({
         {/* Price */}
         <div className="flex items-baseline gap-2">
           <span className="text-lg font-semibold text-gray-900">
-            {formatINR(salePrice ?? regularPrice)}
+            {formatINR(currentPrice)}
           </span>
           {hasDiscount && (
             <span className="text-sm text-gray-400 line-through">
@@ -153,17 +209,20 @@ const ProductCard = ({
             {timeLeft}
           </div>
         )}
-        {isEvent && typeof product?.stock === 'number' && !outOfStock && (
-          <p className="text-xs text-gray-500">{product.stock} left in stock</p>
+        {isEvent && stock !== undefined && !outOfStock && (
+          <p className="text-xs text-gray-500">{stock} left in stock</p>
         )}
 
         <button
           type="button"
-          disabled={outOfStock}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-black py-2 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+          onClick={handleAddToCart}
+          disabled={outOfStock || maxedOut}
+          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:bg-gray-300 ${
+            isInCart ? 'bg-green-600 hover:bg-green-700' : 'bg-black hover:bg-gray-800'
+          }`}
         >
           <ShoppingCart size={16} />
-          {outOfStock ? 'Unavailable' : 'Add to cart'}
+          {buttonLabel}
         </button>
       </div>
     </div>
