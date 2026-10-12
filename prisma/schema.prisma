@@ -68,6 +68,7 @@ model shops {
   sellers sellers @relation(fields: [sellerId], references: [id])
   createdAt DateTime  @default(now())
   updatedAt  DateTime   @updatedAt
+    productAnalytics ProductAnalytics[]
 }
 model sellers {
   id      String      @id @default(auto()) @map("_id") @db.ObjectId
@@ -138,4 +139,35 @@ model products {
   shopId      String    @db.ObjectId
   totalSales  Int       @default(0)
   Shop        shops     @relation(fields: [shopId], references: [id])
+  analytics ProductAnalytics?
+}
+
+model UserAnalytics {
+id           String   @id @default(uuid()) @map("_id")
+userId       String   @unique
+lastVisited  DateTime @default(now())
+actions      Json[]
+country      String?
+city         String?
+device       String?
+createdAt    DateTime @default(now())
+updatedAt    DateTime @updatedAt
+}
+
+model ProductAnalytics {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  productId    String    @unique @db.ObjectId
+  shopId       String?   @db.ObjectId
+  views        Int       @default(0)
+  cartAds      Int       @default(0)
+  wishlistAds  Int       @default(0)
+  purchases    Int       @default(0)
+  lastViewedAt DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  product products @relation(fields: [productId], references: [id])
+  shop    shops?   @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
 }
