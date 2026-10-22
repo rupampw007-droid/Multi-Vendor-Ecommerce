@@ -8,5 +8,9 @@ export const kafka = new Kafka({
     mechanism: 'plain',
     username: process.env.KAFKA_API_KEY!,
     password: process.env.KAFKA_API_SECRET!
-  }
+  },
+   connectionTimeout: 30000,
+  authenticationTimeout: 30000,
+  requestTimeout: 60000,
+  retry: { initialRetryTime: 500, retries: 10 },
 })

@@ -6,13 +6,16 @@ export const updateUserAnalytics = async (event: any) => {
       where: {
         userId: event.userId,
       },
+      select: {
+        actions: true
+      }
     });
 
     let updatedActions: any = existingData?.actions || [];
 
     const actionExists = updatedActions.some(
       (entry: any) =>
-        entry.productId === event.productId && event.action === event.action,
+        entry.productId === event.productId && entry.action === event.action,
     );
 
     // Always store 'product view' for recommendation

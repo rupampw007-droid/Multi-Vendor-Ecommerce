@@ -4,6 +4,95 @@ import { imagekit } from '@repo/lib/imagekit';
 import prisma from '@repo/lib/prisma/prisma';
 import { Request, Response, NextFunction } from 'express';
 
+const parseQueryList = (value: unknown): string[] => {
+  const values = Array.isArray(value) ? value : [value];
+
+  return values
+    .flatMap((item) => (typeof item === 'string' ? item.split(',') : []))
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const parseNumberRange = (
+  value: unknown,
+  defaultRange: [number, number],
+  fieldName: string,
+): [number, number] => {
+  if (value === undefined) {
+    return defaultRange;
+  }
+
+  const values =
+    typeof value === 'string'
+      ? value.split(',')
+      : Array.isArray(value)
+        ? value
+        : [];
+  const range = values.map((item) =>
+    typeof item === 'string' ? Number(item) : Number.NaN,
+  );
+
+  if (
+    range.length !== 2 ||
+    range.some((number) => !Number.isFinite(number)) ||
+    range[0] < 0 ||
+    range[0] > range[1]
+  ) {
+    throw new ValidationError(
+      `${fieldName} must contain a valid minimum and maximum`,
+    );
+  }
+
+  return [range[0], range[1]];
+};
+
+const parsePagination = (
+  req: Request,
+  defaultLimit: number,
+): { page: number; limit: number; skip: number } => {
+  const parseValue = (value: unknown, fallback: number, fieldName: string) => {
+    if (value === undefined) {
+      return fallback;
+    }
+
+    const parsed = typeof value === 'string' ? Number(value) : Number.NaN;
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new ValidationError(`${fieldName} must be a positive integer`);
+    }
+
+    return parsed;
+  };
+
+  const page = parseValue(req.query.page, 1, 'page');
+  const limit = parseValue(req.query.limit, defaultLimit, 'limit');
+
+  if (limit > 100) {
+    throw new ValidationError('limit cannot exceed 100');
+  }
+
+  return { page, limit, skip: (page - 1) * limit };
+};
+
+const parseOptionalDate = (
+  value: unknown,
+  fieldName: string,
+): Date | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    throw new ValidationError(`${fieldName} must be a valid date`);
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new ValidationError(`${fieldName} must be a valid date`);
+  }
+
+  return date;
+};
+
 // Get product categories
 export const getCategories = async (
   req: Request,
@@ -580,6 +669,223 @@ export const getAllProducts = async (
       totalPages: Math.ceil(total / limit),
     });
 
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// get product details
+export const getProductDetails = async (
+  req : Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const product = await prisma.products.findUnique({
+      where: {
+        slug: req.params.slug
+      },
+      include: {
+        images: true,
+        Shop: {
+          include: {
+            avatars: true
+          }
+        }
+      }
+    })
+    if (!product) {
+      return next(new NotFoundError('Product not found'));
+    }
+    return res.status(200).json({
+      success: true,
+      product
+    })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+// Get filtered products
+export const getFilteredProducts = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const priceRange = parseNumberRange(
+      req.query.priceRange,
+      [0, 10000],
+      'priceRange',
+    );
+    const categories = parseQueryList(req.query.categories);
+    const colors = parseQueryList(req.query.colors);
+    const sizes = parseQueryList(req.query.sizes);
+    const { page, limit, skip } = parsePagination(req, 12);
+    const now = new Date();
+
+    const filters: Prisma.productsWhereInput = {
+      status: 'Active',
+      isDeleted: false,
+      sale_price: { gte: priceRange[0], lte: priceRange[1] },
+      AND: [
+        {
+          OR: [
+            { starting_date: null },
+            { starting_date: { isSet: false } },
+            { starting_date: { lte: now } },
+          ],
+        },
+        {
+          OR: [
+            { ending_date: null },
+            { ending_date: { isSet: false } },
+            { ending_date: { gte: now } },
+          ],
+        },
+      ],
+    };
+
+    if (categories.length > 0) {
+      filters.category = { in: categories };
+    }
+
+    if (colors.length > 0) {
+      filters.colors = { hasSome: colors };
+    }
+
+    if (sizes.length > 0) {
+      filters.sizes = { hasSome: sizes };
+    }
+
+    const [products, total] = await Promise.all([
+      prisma.products.findMany({
+        where: filters,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          images: true,
+          Shop: true,
+        },
+      }),
+      prisma.products.count({ where: filters }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    return res.status(200).json({
+      products,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// Get filtered events
+export const getFilteredEvents = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const priceRange = parseNumberRange(
+      req.query.priceRange,
+      [0, 10000],
+      'priceRange',
+    );
+    const categories = parseQueryList(req.query.categories);
+    const startDate = parseOptionalDate(req.query.startDate, 'startDate');
+    const endDate = parseOptionalDate(req.query.endDate, 'endDate');
+    const { page, limit, skip } = parsePagination(req, 12);
+
+    if (startDate && endDate && startDate > endDate) {
+      throw new ValidationError('startDate must not be after endDate');
+    }
+
+    const filters: Prisma.eventsWhereInput = {
+      price: { gte: priceRange[0], lte: priceRange[1] },
+    };
+    const dateFilters: Prisma.eventsWhereInput[] = [];
+
+    if (categories.length > 0) {
+      filters.category = { in: categories };
+    }
+    if (startDate) {
+      dateFilters.push({ ending_date: { gte: startDate } });
+    }
+    if (endDate) {
+      dateFilters.push({ starting_date: { lte: endDate } });
+    }
+    if (dateFilters.length > 0) {
+      filters.AND = dateFilters;
+    }
+
+    const [events, total] = await Promise.all([
+      prisma.events.findMany({
+        where: filters,
+        skip,
+        take: limit,
+        orderBy: { starting_date: 'asc' },
+      }),
+      prisma.events.count({ where: filters }),
+    ]);
+
+    return res.status(200).json({
+      events,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// Get filtered shops
+export const getFilteredShops = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const categories = parseQueryList(req.query.categories);
+    const { page, limit, skip } = parsePagination(req, 12);
+    const filters: Prisma.shopsWhereInput = {};
+
+    if (categories.length > 0) {
+      filters.category = { in: categories };
+    }
+
+    const [shops, total] = await Promise.all([
+      prisma.shops.findMany({
+        where: filters,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: { avatars: true },
+      }),
+      prisma.shops.count({ where: filters }),
+    ]);
+
+    return res.status(200).json({
+      shops,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
     return next(error);
   }

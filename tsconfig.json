@@ -16,13 +16,7 @@
       "path": "./apps/user-ui"
     },
     {
-      "path": "./apps/seller-ui"
-    },
-    {
       "path": "./apps/product-service"
-    },
-    {
-      "path": "./apps/kafka-service-e2e"
     },
     {
       "path": "./apps/kafka-service"
