@@ -142,6 +142,17 @@ model products {
   analytics ProductAnalytics?
 }
 
+model events {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  title        String
+  category     String
+  price        Float
+  starting_date DateTime
+  ending_date   DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model UserAnalytics {
 id           String   @id @default(uuid()) @map("_id")
 userId       String   @unique
