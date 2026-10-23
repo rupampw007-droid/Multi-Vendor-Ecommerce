@@ -890,3 +890,25 @@ export const getFilteredShops = async (
     return next(error);
   }
 };
+
+// Get the highest-rated shops
+export const topShops = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const shops = await prisma.shops.findMany({
+      take: 10,
+      orderBy: [{ ratings: 'desc' }, { createdAt: 'desc' }],
+      include: { avatars: true },
+    });
+
+    return res.status(200).json({
+      success: true,
+      topShops: shops,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
