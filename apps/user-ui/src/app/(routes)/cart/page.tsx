@@ -3,11 +3,43 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import {
+  ArrowRight,
+  Banknote,
+  Check,
+  ChevronDown,
+  CreditCard,
+  MapPin,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Tag,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { useStore } from '@/store'
 import useUser from '@/hooks/useUser'
 import useLocationTracking from '@/hooks/useLocationTracking'
 import useDeviceTracking from '@/hooks/useDeviceTracking'
+import axiosInstance from '@/utils/axiosInstance'
+
+interface ShippingAddress {
+  id: string
+  label: string
+  name: string
+  street: string
+  city: string
+  state?: string | null
+  zip: string
+  country: string
+  phone?: string | null
+  isDefault: boolean
+}
+
+interface ShippingAddressesResponse {
+  addresses: ShippingAddress[]
+}
 
 const formatINR = (value?: number) =>
   typeof value === 'number'
@@ -26,6 +58,36 @@ const DEMO_COUPONS: Record<string, { type: 'percent' | 'flat'; value: number }> 
 }
 
 type PaymentMethod = 'online' | 'cod'
+
+const PAYMENT_OPTIONS = [
+  {
+    value: 'online',
+    label: 'Online payment',
+    hint: 'UPI, cards, net banking',
+    icon: CreditCard,
+  },
+  {
+    value: 'cod',
+    label: 'Cash on Delivery',
+    hint: 'Pay when it arrives',
+    icon: Banknote,
+  },
+] as const
+
+const SectionTitle = ({
+  step,
+  children,
+}: {
+  step: number
+  children: React.ReactNode
+}) => (
+  <div className="mb-2.5 flex items-center gap-2">
+    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-[11px] font-semibold text-white">
+      {step}
+    </span>
+    <h3 className="text-sm font-semibold text-gray-900">{children}</h3>
+  </div>
+)
 
 const CartPage = () => {
   const router = useRouter()
@@ -46,11 +108,39 @@ const CartPage = () => {
   const [addressId, setAddressId] = useState('')
   const [payment, setPayment] = useState<PaymentMethod>('online')
 
-  // Assumes user.addresses = [{ id, name?, line1, city, state, pincode }]
-  const addresses: any[] = (user as any)?.addresses ?? []
+  const {
+    data: addresses = [],
+    isLoading: addressesLoading,
+    isError: addressesError,
+    refetch: refetchAddresses,
+  } = useQuery({
+    queryKey: ['user-addresses'],
+    queryFn: async () => {
+      const response = await axiosInstance.get<ShippingAddressesResponse>(
+        '/api/user-addresses'
+      )
+      return response.data.addresses
+    },
+  })
+
+  useEffect(() => {
+    if (!addresses.some((address) => address.id === addressId)) {
+      setAddressId(addresses.find((address) => address.isDefault)?.id ?? '')
+    }
+  }, [addresses, addressId])
+
+  const selectedAddress = useMemo(
+    () => addresses.find((a) => a.id === addressId),
+    [addresses, addressId]
+  )
 
   const subtotal = useMemo(
     () => cart.reduce((sum, i) => sum + i.price * (i.quantity ?? 1), 0),
+    [cart]
+  )
+
+  const itemCount = useMemo(
+    () => cart.reduce((sum, i) => sum + (i.quantity ?? 1), 0),
     [cart]
   )
 
@@ -98,239 +188,409 @@ const CartPage = () => {
     }
     try {
       sessionStorage.setItem('checkout-payload', JSON.stringify(payload))
-    } catch {}
+    } catch (error) {
+      console.error('Failed to save checkout details', error)
+    }
     router.push('/checkout')
   }
 
-  return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8">
-      <h1 className="mb-6 flex items-center gap-2 text-2xl font-semibold text-gray-900">
-        <ShoppingCart size={24} />
-        Shopping Cart
-        <span className="text-base font-normal text-gray-500">({cart.length})</span>
-      </h1>
+  const selectDisabled =
+    addressesLoading || addressesError || addresses.length === 0
 
-      {cart.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 p-12 text-center">
-          <p className="mb-4 text-gray-600">Your cart is empty.</p>
-          <Link
-            href="/"
-            className="inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-          >
-            Continue shopping
-          </Link>
-        </div>
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-          {/* Cart table */}
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Product</th>
-                  <th className="px-4 py-3 font-semibold">Price</th>
-                  <th className="px-4 py-3 font-semibold">Quantity</th>
-                  <th className="px-4 py-3 text-right font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:py-10">
+        <header className="mb-6 flex items-end justify-between">
+          <div>
+            <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+              <ShoppingCart size={26} />
+              Shopping Cart
+            </h1>
+            {cart.length > 0 && (
+              <p className="mt-1 text-sm text-gray-500">
+                {itemCount} {itemCount === 1 ? 'item' : 'items'} in your cart
+              </p>
+            )}
+          </div>
+          {cart.length > 0 && (
+            <Link
+              href="/"
+              className="hidden text-sm font-medium text-gray-600 underline-offset-4 hover:text-gray-900 hover:underline sm:block"
+            >
+              Continue shopping
+            </Link>
+          )}
+        </header>
+
+        {cart.length === 0 ? (
+          <div className="flex flex-col items-center rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+              <ShoppingCart size={28} />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              Your cart is empty
+            </h2>
+            <p className="mb-6 mt-1 text-sm text-gray-500">
+              Looks like you haven&apos;t added anything yet.
+            </p>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-gray-700"
+            >
+              Continue shopping
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+        ) : (
+          <div className="grid items-start gap-6 lg:grid-cols-[1fr_380px]">
+            {/* Cart items */}
+            <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div className="hidden grid-cols-[1fr_130px_110px_44px] gap-4 border-b border-gray-100 bg-gray-50/70 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 sm:grid">
+                <span>Product</span>
+                <span className="text-center">Quantity</span>
+                <span className="text-right">Total</span>
+                <span />
+              </div>
+
+              <ul className="divide-y divide-gray-100">
                 {cart.map((item) => {
                   const qty = item.quantity ?? 1
                   return (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={item.image || '/placeholder.png'}
-                            alt={item.title}
-                            className="h-16 w-16 rounded-md bg-gray-100 object-cover"
-                            loading="lazy"
-                          />
-                          <span className="line-clamp-2 font-medium text-gray-900">
+                    <li
+                      key={item.id}
+                      className="grid grid-cols-[72px_1fr] items-center gap-x-4 gap-y-3 px-4 py-4 sm:grid-cols-[1fr_130px_110px_44px] sm:px-5"
+                    >
+                      {/* Product */}
+                      <div className="contents sm:flex sm:items-center sm:gap-4">
+                        <img
+                          src={item.image || '/placeholder.png'}
+                          alt={item.title}
+                          className="h-[72px] w-[72px] rounded-xl bg-gray-100 object-cover ring-1 ring-gray-200 sm:h-20 sm:w-20"
+                          loading="lazy"
+                        />
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 text-sm font-medium text-gray-900 sm:text-[15px]">
                             {item.title}
-                          </span>
+                          </p>
+                          <p className="mt-0.5 text-sm text-gray-500">
+                            {formatINR(item.price)}
+                          </p>
                         </div>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900">
-                        {formatINR(item.price)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="inline-flex items-center rounded-lg border border-gray-200">
+                      </div>
+
+                      {/* Quantity */}
+                      <div className="col-span-2 flex items-center justify-between sm:col-span-1 sm:justify-center">
+                        <div className="inline-flex items-center rounded-xl border border-gray-200 bg-white">
                           <button
                             type="button"
                             aria-label="Decrease quantity"
                             disabled={qty <= 1}
                             onClick={() => updateCartQuantity(item.id, qty - 1)}
-                            className="p-2 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded-l-xl p-2 text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                           >
                             <Minus size={14} />
                           </button>
-                          <span className="min-w-[2rem] text-center font-medium">
+                          <span className="min-w-[2.25rem] text-center text-sm font-semibold tabular-nums">
                             {qty}
                           </span>
                           <button
                             type="button"
                             aria-label="Increase quantity"
                             onClick={() => updateCartQuantity(item.id, qty + 1)}
-                            className="p-2 hover:bg-gray-100"
+                            className="rounded-r-xl p-2 text-gray-700 transition hover:bg-gray-100"
                           >
                             <Plus size={14} />
                           </button>
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
+
+                        {/* Mobile-only total + remove */}
+                        <div className="flex items-center gap-3 sm:hidden">
+                          <span className="text-sm font-semibold text-gray-900">
+                            {formatINR(item.price * qty)}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label="Remove from cart"
+                            onClick={() =>
+                              removeFromCart(item.id, user, location, deviceInfo)
+                            }
+                            className="rounded-lg p-2 text-gray-500 transition hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Desktop total */}
+                      <div className="hidden text-right text-sm font-semibold text-gray-900 sm:block">
+                        {formatINR(item.price * qty)}
+                      </div>
+
+                      {/* Desktop remove */}
+                      <div className="hidden justify-end sm:flex">
                         <button
                           type="button"
                           aria-label="Remove from cart"
                           onClick={() =>
                             removeFromCart(item.id, user, location, deviceInfo)
                           }
-                          className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-red-50 hover:text-red-600"
+                          className="rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={16} />
                         </button>
-                      </td>
-                    </tr>
+                      </div>
+                    </li>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
+              </ul>
+            </section>
 
-          {/* Summary box */}
-          <aside className="h-fit space-y-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Subtotal</span>
-              <span className="font-semibold text-gray-900">{formatINR(subtotal)}</span>
-            </div>
+            {/* Summary */}
+            <aside className="space-y-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-6">
+              <h2 className="text-lg font-semibold text-gray-900">Order summary</h2>
 
-            {/* Coupon */}
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-900">
-                Have a coupon?
-              </label>
-              {appliedCoupon ? (
-                <div className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-                  <span>
-                    {appliedCoupon} applied (-{formatINR(discount)})
-                  </span>
-                  <button type="button" onClick={removeCoupon} className="text-xs underline">
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={couponInput}
-                    onChange={(e) => setCouponInput(e.target.value)}
-                    placeholder="Enter coupon code"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-black"
+              {/* Shipping address */}
+              <div>
+                <SectionTitle step={1}>Shipping address</SectionTitle>
+                <div className="relative">
+                  <MapPin
+                    size={16}
+                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
                   />
-                  <button
-                    type="button"
-                    onClick={applyCoupon}
-                    className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                  <select
+                    id="address"
+                    value={addressId}
+                    onChange={(e) => setAddressId(e.target.value)}
+                    disabled={selectDisabled}
+                    className="w-full cursor-pointer appearance-none truncate rounded-xl border border-gray-300 bg-white py-3 pl-10 pr-10 text-sm text-gray-900 shadow-sm outline-none transition hover:border-gray-400 focus:border-gray-900 focus:ring-4 focus:ring-gray-900/10 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
                   >
-                    Apply
-                  </button>
+                    <option value="">
+                      {addressesLoading
+                        ? 'Loading saved addresses...'
+                        : addressesError
+                          ? 'Unable to load addresses'
+                          : addresses.length > 0
+                            ? 'Choose an address'
+                            : 'No saved addresses'}
+                    </option>
+                    {addresses.map((address) => (
+                      <option key={address.id} value={address.id}>
+                        {[address.label, address.city, address.zip]
+                          .filter(Boolean)
+                          .join(' · ')}
+                        {address.isDefault ? ' (Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    size={18}
+                    className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500"
+                  />
                 </div>
-              )}
-              {couponError && <p className="mt-1 text-xs text-red-600">{couponError}</p>}
-            </div>
 
-            {/* Shipping address */}
-            <div>
-              <label
-                htmlFor="address"
-                className="mb-1 block text-sm font-medium text-gray-900"
-              >
-                Select shipping address
-              </label>
-              {addresses.length > 0 ? (
-                <select
-                  id="address"
-                  value={addressId}
-                  onChange={(e) => setAddressId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-black"
-                >
-                  <option value="">Choose an address</option>
-                  {addresses.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {[a.name, a.line1, a.city, a.state, a.pincode]
+                {/* Selected address preview */}
+                {selectedAddress && (
+                  <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3.5 text-sm">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="font-semibold text-gray-900">
+                        {selectedAddress.name}
+                      </span>
+                      <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white">
+                        {selectedAddress.label}
+                      </span>
+                      {selectedAddress.isDefault && (
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-green-700">
+                          Default
+                        </span>
+                      )}
+                    </div>
+                    <p className="leading-relaxed text-gray-600">
+                      {[
+                        selectedAddress.street,
+                        selectedAddress.city,
+                        selectedAddress.state,
+                        selectedAddress.zip,
+                        selectedAddress.country,
+                      ]
                         .filter(Boolean)
                         .join(', ')}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  No saved addresses.{' '}
-                  <Link href="/profile" className="text-blue-600 hover:underline">
-                    Add one
-                  </Link>
-                </p>
-              )}
-            </div>
+                    </p>
+                    {selectedAddress.phone && (
+                      <p className="mt-1 text-gray-500">{selectedAddress.phone}</p>
+                    )}
+                  </div>
+                )}
 
-            {/* Payment method */}
-            <div>
-              <p className="mb-2 text-sm font-medium text-gray-900">
-                Select payment method
-              </p>
-              <div className="space-y-2">
-                {(
-                  [
-                    { value: 'online', label: 'Online payment' },
-                    { value: 'cod', label: 'Cash on Delivery' },
-                  ] as const
-                ).map((opt) => (
-                  <label
-                    key={opt.value}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                      payment === opt.value
-                        ? 'border-black bg-gray-50'
-                        : 'border-gray-200'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      value={opt.value}
-                      checked={payment === opt.value}
-                      onChange={() => setPayment(opt.value)}
-                    />
-                    {opt.label}
-                  </label>
-                ))}
+                {addressesError ? (
+                  <div className="mt-2 text-sm text-red-600">
+                    <p role="alert">We couldn&apos;t load your shipping addresses.</p>
+                    <button
+                      type="button"
+                      onClick={() => void refetchAddresses()}
+                      className="mt-1 font-medium underline"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : !addressesLoading && addresses.length === 0 ? (
+                  <p className="mt-2 text-sm text-gray-500">
+                    No saved addresses.{' '}
+                    <Link
+                      href="/profile"
+                      className="font-medium text-blue-600 hover:underline"
+                    >
+                      Add one
+                    </Link>
+                  </p>
+                ) : null}
               </div>
-            </div>
 
-            {/* Total */}
-            <div className="space-y-1 border-t border-gray-200 pt-4">
-              {discount > 0 && (
-                <div className="flex justify-between text-sm text-green-700">
-                  <span>Discount</span>
-                  <span>-{formatINR(discount)}</span>
+              {/* Payment method */}
+              <div>
+                <SectionTitle step={2}>Payment method</SectionTitle>
+                <div className="space-y-2">
+                  {PAYMENT_OPTIONS.map((opt) => {
+                    const Icon = opt.icon
+                    const active = payment === opt.value
+                    return (
+                      <label
+                        key={opt.value}
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition ${
+                          active
+                            ? 'border-gray-900 bg-gray-50 ring-1 ring-gray-900'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="payment"
+                          value={opt.value}
+                          checked={active}
+                          onChange={() => setPayment(opt.value)}
+                          className="sr-only"
+                        />
+                        <span
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                            active
+                              ? 'bg-gray-900 text-white'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          <Icon size={18} />
+                        </span>
+                        <span className="flex-1">
+                          <span className="block font-medium text-gray-900">
+                            {opt.label}
+                          </span>
+                          <span className="block text-xs text-gray-500">
+                            {opt.hint}
+                          </span>
+                        </span>
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                            active
+                              ? 'border-gray-900 bg-gray-900 text-white'
+                              : 'border-gray-300'
+                          }`}
+                        >
+                          {active && <Check size={12} strokeWidth={3} />}
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
-              )}
-              <div className="flex justify-between text-base font-semibold text-gray-900">
-                <span>Total</span>
-                <span>{formatINR(total)}</span>
               </div>
-            </div>
 
-            <button
-              type="button"
-              onClick={handleCheckout}
-              disabled={!addressId}
-              className="w-full rounded-lg bg-black py-3 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-            >
-              {addressId ? 'Proceed to checkout' : 'Select an address to continue'}
-            </button>
-          </aside>
-        </div>
-      )}
+              {/* Coupon */}
+              <div>
+                <SectionTitle step={3}>Coupon</SectionTitle>
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between rounded-xl border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-green-800">
+                    <span className="flex items-center gap-2">
+                      <Tag size={15} />
+                      <span>
+                        <span className="font-semibold">{appliedCoupon}</span>{' '}
+                        applied (-{formatINR(discount)})
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={removeCoupon}
+                      aria-label="Remove coupon"
+                      className="rounded-md p-1 text-green-700 transition hover:bg-green-100"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag
+                        size={15}
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                      />
+                      <input
+                        type="text"
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && applyCoupon()}
+                        placeholder="Enter coupon code"
+                        className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm uppercase placeholder:normal-case outline-none transition hover:border-gray-400 focus:border-gray-900 focus:ring-4 focus:ring-gray-900/10"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={applyCoupon}
+                      className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                )}
+                {couponError && (
+                  <p className="mt-1.5 text-xs text-red-600">{couponError}</p>
+                )}
+              </div>
+
+              {/* Totals */}
+              <div className="space-y-2 border-t border-gray-200 pt-4 text-sm">
+                <div className="flex justify-between text-gray-600">
+                  <span>Subtotal</span>
+                  <span className="font-medium text-gray-900">
+                    {formatINR(subtotal)}
+                  </span>
+                </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-green-700">
+                    <span>Discount</span>
+                    <span className="font-medium">-{formatINR(discount)}</span>
+                  </div>
+                )}
+                <div className="flex items-baseline justify-between border-t border-dashed border-gray-200 pt-3 text-base font-semibold text-gray-900">
+                  <span>Total</span>
+                  <span className="text-xl">{formatINR(total)}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCheckout}
+                disabled={!addressId}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
+              >
+                {addressId ? (
+                  <>
+                    Proceed to checkout
+                    <ArrowRight size={16} />
+                  </>
+                ) : (
+                  'Select an address to continue'
+                )}
+              </button>
+            </aside>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
