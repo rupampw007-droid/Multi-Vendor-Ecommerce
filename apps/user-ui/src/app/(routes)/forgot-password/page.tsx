@@ -1,8 +1,6 @@
 'use client';
-import SignInWithGoogleButton from '@/shared/components';
 import { useMutation } from '@tanstack/react-query';
 import axios, { AxiosError } from 'axios';
-import { response } from 'express';
 import { EyeIcon, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -22,10 +20,8 @@ const ForgotPassword = () => {
   const [canResend, setCanResend] = useState(true);
   const [timer, setTimer] = useState(60);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const [userData, setUserData] = useState<FormData | null>(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [rememberMe, setRememberMe] = useState(false);
   const router = useRouter();
   const isOtpComplete = otp.every((digit) => digit.length === 1);
 

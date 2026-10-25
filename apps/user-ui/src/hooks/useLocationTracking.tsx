@@ -6,34 +6,50 @@ const LOCATION_STORAGE_KEY = "user_location"
 const LOCATION_EXPIRY_DAYS = 20
 
 const getStoredLocation = () => {
-    const storedData = localStorage.getItem(LOCATION_STORAGE_KEY)
+    if (typeof window === 'undefined') return null
 
-    if(!storedData) return null
+    const storedData = window.localStorage.getItem(LOCATION_STORAGE_KEY)
 
-    const parsedData = JSON.parse(storedData)
-    const expiryTime = LOCATION_EXPIRY_DAYS * 24 * 60 * 60 * 1000  // 20 days
-    const isExpired = Date.now() - parsedData.timestamp > expiryTime
+    if (!storedData) return null
 
-    return isExpired ? null : parsedData
+    try {
+        const parsedData = JSON.parse(storedData)
+        const expiryTime = LOCATION_EXPIRY_DAYS * 24 * 60 * 60 * 1000
+        const isExpired = Date.now() - parsedData.timestamp > expiryTime
+
+        return isExpired ? null : parsedData
+    } catch {
+        return null
+    }
 }
 
 const useLocationTracking = () => {
-    const [location, setLocation] = useState<{country : string, city : string} | null>(getStoredLocation())
+    const [location, setLocation] = useState<{ country: string; city: string } | null>(null)
 
     useEffect(() => {
-        if(location) return;
+        const storedLocation = getStoredLocation()
+        if (storedLocation) {
+            setLocation(storedLocation)
+            return
+        }
 
-        fetch("http://ip-api.com/json/").then((res) => res.json()).then((data) => {
-            const newLocation = {
-                country : data?.country,
-                city : data?.city,
-                timestamp: Date.now() 
-            }
+        fetch('http://ip-api.com/json/')
+            .then((res) => res.json())
+            .then((data) => {
+                const newLocation = {
+                    country: data?.country,
+                    city: data?.city,
+                    timestamp: Date.now(),
+                }
 
-            localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(newLocation))
-            setLocation(newLocation)
-        }).catch((error) => console.log('Failed to get location: ', error))
+                if (typeof window !== 'undefined') {
+                    window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(newLocation))
+                }
+                setLocation(newLocation)
+            })
+            .catch((error) => console.log('Failed to get location: ', error))
     }, [])
+
     return location
 }
 

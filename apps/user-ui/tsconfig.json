@@ -20,7 +20,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@repo/*": ["../../packages/*"]
+      "@repo/*": ["../../packages/*"],
+      "@multivendor-ecommerce/*": ["../../*"]
     },
     "outDir": "dist",
     "rootDir": "../..",

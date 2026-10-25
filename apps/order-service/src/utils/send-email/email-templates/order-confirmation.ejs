@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order Confirmed</title>
+  </head>
+  <body style="margin: 0; padding: 0; background: #f4f7fb; font-family: Arial, sans-serif; color: #1f2937;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #f4f7fb; padding: 24px 12px;">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb;">
+            <tr>
+              <td style="padding: 28px 30px; background: linear-gradient(135deg, #111827 0%, #1f2937 100%); color: #ffffff; text-align: center;">
+                <h1 style="margin: 0; font-size: 26px;">Order Confirmed</h1>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding: 30px;">
+                <p style="margin: 0 0 14px; font-size: 16px;">Hi <strong><%= name %></strong>,</p>
+                <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #4b5563;">
+                  Your order has been placed successfully and is now being processed.
+                </p>
+
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 18px 20px; margin-bottom: 22px;">
+                  <p style="margin: 0 0 6px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280;">Order ID</p>
+                  <p style="margin: 0; font-size: 24px; font-weight: 700; color: #111827;"><%= orderId %></p>
+                </div>
+
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 24px; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 10px 0; font-size: 14px; color: #6b7280;">Total Amount</td>
+                    <td style="padding: 10px 0; font-size: 14px; font-weight: 700; color: #111827; text-align: right;">₹<%= totalAmount %></td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 10px 0; font-size: 14px; color: #6b7280;">Payment Method</td>
+                    <td style="padding: 10px 0; font-size: 14px; color: #111827; text-align: right;"><%= paymentMethod %></td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 10px 0; font-size: 14px; color: #6b7280;">Delivery</td>
+                    <td style="padding: 10px 0; font-size: 14px; color: #111827; text-align: right;"><%= deliveryLocation %></td>
+                  </tr>
+                </table>
+
+                <div style="margin-bottom: 20px;">
+                  <p style="margin: 0 0 10px; font-size: 15px; font-weight: 700; color: #111827;">Items</p>
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                    <% items.forEach(function(item) { %>
+                      <tr>
+                        <td style="padding: 12px 14px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151;">
+                          <%= item.name %> × <%= item.quantity %>
+                        </td>
+                        <td style="padding: 12px 14px; border-bottom: 1px solid #e5e7eb; font-size: 14px; font-weight: 600; color: #111827; text-align: right;">
+                          ₹<%= item.price * item.quantity %>
+                        </td>
+                      </tr>
+                    <% }) %>
+                  </table>
+                </div>
+
+                <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: #4b5563;">
+                  We’ll keep you updated as your order moves through fulfillment and delivery.
+                </p>
+
+                <p style="margin: 0; font-size: 14px; color: #6b7280;">
+                  Thanks for shopping with Multivendor Ecommerce.
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding: 18px 24px; background: #f9fafb; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #6b7280;">
+                Multivendor Ecommerce • Your trusted marketplace
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

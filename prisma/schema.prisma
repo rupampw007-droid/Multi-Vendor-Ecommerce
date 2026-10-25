@@ -40,6 +40,39 @@ model users {
   updatedAt DateTime     @updatedAt
 }
 
+model notifications {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  title        String
+  message      String
+  creatorId    String   @db.ObjectId
+  receiverId   String   @db.ObjectId
+  orderId      String?  @db.ObjectId
+  order        orders?  @relation(fields: [orderId], references: [id])
+  redirect_link String
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([receiverId, isRead])
+  @@index([orderId])
+}
+
+model orders {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  paymentIntentId String   @unique
+  userId          String   @db.ObjectId
+  items           Json
+  shippingAddress Json?
+  subtotal        Float
+  totalAmount     Float
+  currency        String
+  status          String   @default("paid")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  notifications   notifications[]
+
+  @@index([userId, createdAt])
+}
+
 model userAddress {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String   @db.ObjectId
