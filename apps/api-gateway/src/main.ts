@@ -7,17 +7,13 @@ import express from 'express';
 import * as path from 'path';
 import cors from 'cors'
 import morgan from 'morgan'
-import axios  from 'axios';
 import rateLimit from 'express-rate-limit';
-import swaggerUI from 'swagger-ui-express'
 import proxy from 'express-http-proxy'
 import cookieParser from 'cookie-parser'
 import { initializeSiteConfig } from './libs/initializeSiteConfig';
 const app = express();
 
-app.use(express.json({limit: '10mb'}))
 app.use(morgan('dev'))
-app.use(express.urlencoded({limit: '10mb', extended: true}))
 app.use(cors({
   origin: ['http://localhost:3000', 'http://localhost:3001'],
   allowedHeaders: ["Authorization",'Content-Type'],
@@ -38,6 +34,16 @@ const limiter = rateLimit({
 // Apply the rate limiting middleware to all requests.
 app.use(limiter)
 
+app.post(
+  '/order/api/stripe-webhook',
+  express.raw({ type: 'application/json' }),
+  proxy('http://localhost:6004', {
+    proxyReqPathResolver: () => '/api/stripe-webhook',
+  }),
+)
+
+app.use(express.json({limit: '10mb'}))
+app.use(express.urlencoded({limit: '10mb', extended: true}))
 
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
@@ -45,8 +51,11 @@ app.get('/gateway-health', (req, res) => {
   res.send({ message: 'Welcome to api-gateway!' });
 });
 
+app.use('/order', proxy('http://localhost:6004'))
+app.use('/seller', proxy('http://localhost:6003'))
 app.use('/product', proxy("http://localhost:6002"))
 app.use('/', proxy("http://localhost:6001"))
+
 // Don't put '/' route at the top cuz it will always gonna executed when you will try to go to any route first 
 
 const port = process.env.PORT || 8080;

@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowRight,
-  Banknote,
   Check,
   ChevronDown,
   CreditCard,
@@ -23,6 +22,7 @@ import useUser from '@/hooks/useUser'
 import useLocationTracking from '@/hooks/useLocationTracking'
 import useDeviceTracking from '@/hooks/useDeviceTracking'
 import axiosInstance from '@/utils/axiosInstance'
+import toast from 'react-hot-toast'
 
 interface ShippingAddress {
   id: string
@@ -50,29 +50,11 @@ const formatINR = (value?: number) =>
       }).format(value)
     : ''
 
-// TODO: replace with a real API call (e.g. POST /api/coupons/validate).
-// type 'percent' => value is % off, 'flat' => value is INR off.
+// Coupon amounts are checked again by the order service before payment.
 const DEMO_COUPONS: Record<string, { type: 'percent' | 'flat'; value: number }> = {
   SAVE10: { type: 'percent', value: 10 },
   FLAT100: { type: 'flat', value: 100 },
 }
-
-type PaymentMethod = 'online' | 'cod'
-
-const PAYMENT_OPTIONS = [
-  {
-    value: 'online',
-    label: 'Online payment',
-    hint: 'UPI, cards, net banking',
-    icon: CreditCard,
-  },
-  {
-    value: 'cod',
-    label: 'Cash on Delivery',
-    hint: 'Pay when it arrives',
-    icon: Banknote,
-  },
-] as const
 
 const SectionTitle = ({
   step,
@@ -106,7 +88,7 @@ const CartPage = () => {
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null)
   const [couponError, setCouponError] = useState('')
   const [addressId, setAddressId] = useState('')
-  const [payment, setPayment] = useState<PaymentMethod>('online')
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false)
 
   const {
     data: addresses = [],
@@ -174,24 +156,38 @@ const CartPage = () => {
     setCouponError('')
   }
 
-  const handleCheckout = () => {
-    if (!cart.length || !addressId) return
-    // TODO: send this to your checkout/order API instead of just navigating.
-    const payload = {
-      items: cart,
-      addressId,
-      payment,
-      coupon: appliedCoupon,
-      subtotal,
-      discount,
-      total,
-    }
+  const handleCheckout = async () => {
+    if (!cart.length || !addressId || isStartingCheckout) return
+    setIsStartingCheckout(true)
     try {
-      sessionStorage.setItem('checkout-payload', JSON.stringify(payload))
+      const response = await axiosInstance.post<{
+        sessionId: string
+      }>('/order/api/create-payment-session', {
+        cart: cart.map(({ id, quantity }) => ({
+          id,
+          quantity: quantity ?? 1,
+        })),
+        selectedAddressId: addressId,
+        coupon: appliedCoupon,
+      })
+      router.push(`/checkout?sessionId=${encodeURIComponent(response.data.sessionId)}`)
     } catch (error) {
-      console.error('Failed to save checkout details', error)
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof error.response === 'object' &&
+        error.response !== null &&
+        'data' in error.response &&
+        typeof error.response.data === 'object' &&
+        error.response.data !== null &&
+        'message' in error.response.data &&
+        typeof error.response.data.message === 'string'
+          ? error.response.data.message
+          : 'We couldn’t start checkout. Please try again.'
+      toast.error(message)
+      setIsStartingCheckout(false)
     }
-    router.push('/checkout')
   }
 
   const selectDisabled =
@@ -448,56 +444,21 @@ const CartPage = () => {
               {/* Payment method */}
               <div>
                 <SectionTitle step={2}>Payment method</SectionTitle>
-                <div className="space-y-2">
-                  {PAYMENT_OPTIONS.map((opt) => {
-                    const Icon = opt.icon
-                    const active = payment === opt.value
-                    return (
-                      <label
-                        key={opt.value}
-                        className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition ${
-                          active
-                            ? 'border-gray-900 bg-gray-50 ring-1 ring-gray-900'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="payment"
-                          value={opt.value}
-                          checked={active}
-                          onChange={() => setPayment(opt.value)}
-                          className="sr-only"
-                        />
-                        <span
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                            active
-                              ? 'bg-gray-900 text-white'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          <Icon size={18} />
-                        </span>
-                        <span className="flex-1">
-                          <span className="block font-medium text-gray-900">
-                            {opt.label}
-                          </span>
-                          <span className="block text-xs text-gray-500">
-                            {opt.hint}
-                          </span>
-                        </span>
-                        <span
-                          className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                            active
-                              ? 'border-gray-900 bg-gray-900 text-white'
-                              : 'border-gray-300'
-                          }`}
-                        >
-                          {active && <Check size={12} strokeWidth={3} />}
-                        </span>
-                      </label>
-                    )
-                  })}
+                <div className="flex items-center gap-3 rounded-xl border border-gray-900 bg-gray-50 px-3.5 py-3 text-sm ring-1 ring-gray-900">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white">
+                    <CreditCard size={18} />
+                  </span>
+                  <span className="flex-1">
+                    <span className="block font-medium text-gray-900">
+                      Online payment
+                    </span>
+                    <span className="block text-xs text-gray-500">
+                      Secure payment with card and supported wallets
+                    </span>
+                  </span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-gray-900 bg-gray-900 text-white">
+                    <Check size={12} strokeWidth={3} />
+                  </span>
                 </div>
               </div>
 
@@ -575,10 +536,12 @@ const CartPage = () => {
               <button
                 type="button"
                 onClick={handleCheckout}
-                disabled={!addressId}
+                disabled={!addressId || isStartingCheckout}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
               >
-                {addressId ? (
+                {isStartingCheckout ? (
+                  'Preparing secure checkout...'
+                ) : addressId ? (
                   <>
                     Proceed to checkout
                     <ArrowRight size={16} />

@@ -40,6 +40,7 @@ type Store = {
   ) => void;
   updateWishlistQuantity: (id: string, quantity: number) => void;
   updateCartQuantity: (id: string, quantity: number) => void;
+  clearCart: () => void;
 };
 
 export const useStore = create<Store>()(
@@ -161,6 +162,7 @@ export const useStore = create<Store>()(
           ),
         }));
       },
+      clearCart: () => set({ cart: [] }),
     }),
     { name: 'store-storage' },
   ),
