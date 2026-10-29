@@ -285,21 +285,36 @@ export const refreshToken = async (
   next: NextFunction,
 ) => {
   try {
+    const requestedRole = req.body?.role;
+    if (
+      requestedRole !== undefined &&
+      !['user', 'seller'].includes(requestedRole)
+    ) {
+      throw new JsonWebTokenError('Forbidden! Invalid account role');
+    }
+
     const refreshToken =
-      req.cookies['access_token'] ||
-      req.cookies['seller-access-token'] ||
-      req.headers.authorization?.split(' ')[1];
+      requestedRole === 'seller'
+        ? req.cookies?.['seller-refresh-token']
+        : requestedRole === 'user'
+          ? req.cookies?.['refresh_token']
+          : req.cookies?.['refresh_token'] ||
+            req.cookies?.['seller-refresh-token'];
 
     if (!refreshToken) {
-      throw new ValidationError('Unauthorized! NO refresh token');
+      throw new AuthError('Unauthorized! No refresh token');
     }
     const decoded = jwt.verify(
       refreshToken,
       process.env.REFRESH_TOKEN_SECRET as string,
     ) as { id: string; role: string };
 
-    if (!decoded || !decoded.id || !decoded.role) {
-      return new JsonWebTokenError('Forbidden! Invalid refresh token');
+    if (
+      !decoded.id ||
+      !['user', 'seller'].includes(decoded.role) ||
+      (requestedRole !== undefined && decoded.role !== requestedRole)
+    ) {
+      throw new JsonWebTokenError('Forbidden! Invalid refresh token');
     }
 
     let account;
@@ -307,26 +322,14 @@ export const refreshToken = async (
       account = await prisma.users.findUnique({
         where: { id: decoded.id },
       });
-    } else if (decoded.role === 'seller') {
+    } else {
       account = await prisma.sellers.findUnique({
-            where: {
-                id : decoded.id
-            }, include: {shop : true}
-        })
+        where: { id: decoded.id },
+      });
     }
 
     if (!account) {
-      return new AuthError('Forbidden! User/Seller not found');
-    }
-
-    const user = await prisma.users.findUnique({
-      where: {
-        id: decoded.id,
-      },
-    });
-
-    if (!user) {
-      return new AuthError('Forbidden! User/Seller not found');
+      throw new AuthError('Forbidden! User/Seller not found');
     }
 
     const newAccessToken = jwt.sign(
@@ -340,14 +343,13 @@ export const refreshToken = async (
       },
     );
 
-    if(decoded.role === 'user') {
-      setCookie(res, 'access_token', newAccessToken)
-    } else if(decoded.role === 'seller') {
-      setCookie(res, 'seller-access-token', newAccessToken)
+    if (decoded.role === 'user') {
+      setCookie(res, 'access_token', newAccessToken);
+    } else {
+      setCookie(res, 'seller-access-token', newAccessToken);
     }
-    setCookie(res, 'access_token', newAccessToken);
     req.role = decoded.role;
-    return res.status(201).json({
+    return res.status(200).json({
       success: true,
     });
   } catch (err) {

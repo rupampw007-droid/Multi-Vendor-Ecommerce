@@ -1,71 +1,87 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
+import type { CustomAxiosRequestConfig } from './axiosInstance.types';
+import { runRedirectToLogin } from './redirect';
+
+const serverUri = process.env.NEXT_PUBLIC_SERVER_URI;
 
 const axiosInstance = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_SERVER_URI,
-    withCredentials: true
-})
+  baseURL: serverUri,
+  withCredentials: true,
+});
 
-let isRefreshing = false
-let refreshSubscribers: (() => void)[] = []
+let refreshPromise: Promise<void> | null = null;
 
-//Handle logout and prevent infinite loops
+const authenticatedPaths = [
+  '/api/logged-in-user',
+  '/api/user-profile',
+  '/api/user-addresses',
+  '/api/logout-user',
+  '/order/api/create-payment-session',
+  '/order/api/create-payment-intent',
+  '/order/api/verify-payment-session',
+];
+
+const requiresAuthentication = (config: CustomAxiosRequestConfig) => {
+  if (config.requireAuth !== undefined) {
+    return config.requireAuth;
+  }
+  return authenticatedPaths.some((path) => config.url?.includes(path));
+};
+
 const handleLogout = () => {
-    if(window.location.pathname !== "/login") {
-        window.location.pathname = "/login"
-    }
-}
+  if (
+    typeof window !== 'undefined' &&
+    !['/login', '/signup', '/forgot-password'].includes(window.location.pathname)
+  ) {
+    runRedirectToLogin();
+  }
+};
 
-// Handling adding a new access token to queued requests
-const subscribeTokenRefresh = (callback: () => void) => {
-    refreshSubscribers.push(callback)
-}
+const refreshAccessToken = () => {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(
+        `${serverUri}/api/refresh-token`,
+        { role: 'user' },
+        { withCredentials: true },
+      )
+      .then(() => undefined)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+};
 
-// Execute queued requests  after refresh 
-const onRefreshSuccess = () => {
-    refreshSubscribers.forEach((callback) => callback())
-    refreshSubscribers = [];
-}
-
-// Handle API requests
-axiosInstance.interceptors.request.use(
-    (config) => config,
-    (error) => Promise.reject(error)
-)
-
-// Handle expired tokens and refresh logic
 axiosInstance.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        const originalRequest = error.config;
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as
+      | CustomAxiosRequestConfig
+      | undefined;
 
-        // prevent infinity retry loop
-        if(error.response?.status === 401 && !originalRequest._retry) {
-            if(isRefreshing) {
-                return new Promise((resolve) => {
-                    subscribeTokenRefresh(() => resolve(axiosInstance(originalRequest)))
-                })
-            }
-            originalRequest._retry = true
-            isRefreshing = true
-            try {
-                await axios.post(
-                    `${process.env.NEXT_PUBLIC_SERVER_URI}/api/refresh-token`,
-                    {},
-                    {withCredentials: true}
-                );
-                isRefreshing = false;
-                onRefreshSuccess()
-
-                return axiosInstance(originalRequest)
-            } catch (error) {
-                isRefreshing = false
-                refreshSubscribers = []
-                handleLogout();
-                return Promise.reject(error)
-            }
-        }
-        return Promise.reject(error)
+    if (
+      error.response?.status !== 401 ||
+      !originalRequest ||
+      !requiresAuthentication(originalRequest)
+    ) {
+      return Promise.reject(error);
     }
-)
 
-export default axiosInstance
+    if (originalRequest._retry) {
+      handleLogout();
+      return Promise.reject(error);
+    }
+
+    originalRequest._retry = true;
+    try {
+      await refreshAccessToken();
+      return await axiosInstance(originalRequest);
+    } catch (refreshError) {
+      handleLogout();
+      return Promise.reject(refreshError);
+    }
+  },
+);
+
+export default axiosInstance;

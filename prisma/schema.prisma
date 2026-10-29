@@ -72,8 +72,40 @@ model orders {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   notifications   notifications[]
+  fulfillments    orderFulfillments[]
 
   @@index([userId, createdAt])
+}
+
+enum OrderFulfillmentStatus {
+  PAID
+  PROCESSING
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+}
+
+model orderFulfillments {
+  id                String                  @id @default(auto()) @map("_id") @db.ObjectId
+  orderId           String                  @db.ObjectId
+  shopId            String                  @db.ObjectId
+  order             orders                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shop              shops                   @relation(fields: [shopId], references: [id])
+  status            OrderFulfillmentStatus  @default(PAID)
+  subtotal          Float?
+  totalAmount       Float?
+  carrier           String?
+  trackingNumber    String?
+  estimatedDelivery DateTime?
+  sellerNotes       String?
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  statusHistory     Json[]                  @default([])
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([orderId, shopId])
+  @@index([shopId, status, createdAt])
 }
 
 model userAddress {
@@ -120,6 +152,7 @@ model shops {
   ratings Float  @default(0)
   reviews shopReviews[]
   products products[]
+  orderFulfillments orderFulfillments[]
   sellerId  String @unique @db.ObjectId
   sellers sellers @relation(fields: [sellerId], references: [id])
   createdAt DateTime  @default(now())
