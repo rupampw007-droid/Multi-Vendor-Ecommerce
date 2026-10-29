@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { ValidationError } from '@repo/error-handler';
+import { NotFoundError, ValidationError } from '@repo/error-handler';
 import prisma from '@repo/lib/prisma/prisma';
 import redis from '@repo/lib/redis';
 import { NextFunction, Request, Response } from 'express';
 import Stripe from 'stripe';
 import { sendEmail } from '../utils/send-email';
+import { Prisma } from '@multivendor-ecommerce/generated/prisma/client';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey) {
@@ -15,8 +16,53 @@ const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2026-08-26.dahlia',
 });
 
+type StripeConnectedAccount = Stripe.Account | Stripe.V2.Core.Account;
+
+const retrieveStripeAccount = async (
+  accountId: string,
+): Promise<StripeConnectedAccount> => {
+  try {
+    return await stripe.v2.core.accounts.retrieve(accountId, {
+      include: ['configuration.recipient', 'identity'],
+    });
+  } catch (error) {
+    if (
+      !(error instanceof Stripe.errors.StripeError) ||
+      (error.statusCode !== 404 && error.code !== 'resource_missing')
+    ) {
+      throw error;
+    }
+
+    return stripe.accounts.retrieve(accountId);
+  }
+};
+
+const canReceiveOrderPayouts = (account: StripeConnectedAccount) => {
+  if (account.object === 'v2.core.account') {
+    const capabilities =
+      account.configuration?.recipient?.capabilities?.stripe_balance;
+    return (
+      account.closed !== true &&
+      account.identity?.country === 'IN' &&
+      capabilities?.stripe_transfers?.status === 'active' &&
+      capabilities.payouts?.status === 'active'
+    );
+  }
+
+  return (
+    !('deleted' in account && account.deleted) &&
+    account.country === 'IN' &&
+    account.capabilities?.transfers === 'active' &&
+    account.payouts_enabled
+  );
+};
+
 type AuthenticatedRequest = Request & {
   user?: { id: string };
+};
+
+type SellerAuthenticatedRequest = Request & {
+  seller?: { id: string };
 };
 
 type CartInput = {
@@ -238,7 +284,9 @@ export const createPaymentSession = async (
 
     const sellers = shops.map((shop) => {
       if (!shop.sellers.stripeId) {
-        throw new ValidationError('A seller is not ready to receive payments');
+        throw new ValidationError(
+          'A seller has not connected a payout account yet. Please contact the seller or try another product.',
+        );
       }
       const sellerItems = normalizedCart.filter(
         (item) => item.shopId === shop.id,
@@ -253,6 +301,14 @@ export const createPaymentSession = async (
         ),
       };
     });
+    const sellerAccounts = await Promise.all(
+      sellers.map((seller) => retrieveStripeAccount(seller.stripeAccountId)),
+    );
+    if (sellerAccounts.some((account) => !canReceiveOrderPayouts(account))) {
+      throw new ValidationError(
+        'A seller has not completed Stripe payout setup. Please contact the seller or try another product.',
+      );
+    }
     const subtotalAmount = normalizedCart.reduce(
       (total, item) => total + item.quantity * item.sale_price,
       0,
@@ -395,6 +451,7 @@ export const createOrder = async (
         data: {
           paymentIntentId: paymentIntent.id,
           userId,
+          shopIds: [...new Set(session.cart.map((item) => item.shopId))],
           items: session.cart,
           shippingAddress: address
             ? {
@@ -498,6 +555,143 @@ export const createOrder = async (
 
     await redis.del(sessionKey);
     return res.status(200).json({ received: true });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+
+// get seller orders
+export const getSellerOrders = async (
+  req: SellerAuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const sellerId = req.seller?.id;
+    if (!sellerId) {
+      throw new ValidationError('Seller authentication is required');
+    }
+
+    const shop = await prisma.shops.findUnique({
+      where: { sellerId },
+    });
+    if (!shop) {
+      throw new ValidationError('Seller shop was not found');
+    }
+
+    const orders = await prisma.orders.findMany({
+      where: {
+        shopIds: { has: shop.id },
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+            id: true,
+            avatars: {
+              select: { url: true },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    res.status(200).json({
+      orders: orders.map((order) => ({
+        ...order,
+        items: Array.isArray(order.items)
+          ? order.items.filter(
+              (item) =>
+                item !== null &&
+                typeof item === 'object' &&
+                !Array.isArray(item) &&
+                'shopId' in item &&
+                item.shopId === shop.id,
+            )
+          : [],
+      })),
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getOrderDetails = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const orderId = req.params.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new ValidationError('Customer authentication is required');
+    }
+
+    const order = await prisma.orders.findUnique({
+      where: { id: orderId, userId },
+    });
+
+    if (!order) {
+      return next(new NotFoundError('Order not found'));
+    }
+
+    const orderItems = Array.isArray(order.items)
+      ? order.items.filter(
+          (item): item is Prisma.JsonObject =>
+            item !== null &&
+            typeof item === 'object' &&
+            !Array.isArray(item),
+        )
+      : [];
+    const productIds = [
+      ...new Set(
+        orderItems.flatMap((item) =>
+          typeof item.id === 'string' ? [item.id] : [],
+        ),
+      ),
+    ];
+    const products = await prisma.products.findMany({
+      where: { id: { in: productIds } },
+      select: {
+        id: true,
+        title: true,
+        images: true,
+      },
+    });
+
+    const productMap = new Map(
+      products.map((product) => [product.id, product]),
+    );
+    const items = orderItems.map((item) => {
+      const productId = typeof item.id === 'string' ? item.id : null;
+      const selectedOptions = item.selectedOptions;
+
+      return {
+        ...item,
+        selectedOptions:
+          selectedOptions !== null &&
+          typeof selectedOptions === 'object' &&
+          !Array.isArray(selectedOptions)
+            ? selectedOptions
+            : {},
+        product: productId ? productMap.get(productId) ?? null : null,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      order: {
+        ...order,
+        items,
+        shippingAddress: order.shippingAddress,
+      },
+    });
   } catch (error) {
     return next(error);
   }

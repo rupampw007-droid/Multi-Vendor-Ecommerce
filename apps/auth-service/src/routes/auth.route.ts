@@ -18,6 +18,7 @@ import {
   verifyUser,
   verifyUserForgotPassword,
   createStripeConnectLink,
+  getStripeConnectStatus,
   loginSeller,
   getSeller,
   setDefaultUserAddress,
@@ -53,6 +54,17 @@ router.post('/verify-forgot-password-user', verifyUserForgotPassword);
 router.post('/seller-registration', registerSeller);
 router.post('/verify-seller', verifySeller);
 router.post('/create-shop', createShop);
-router.post('/create-stripe-link', createStripeConnectLink);
+router.get(
+  '/stripe-connect-status',
+  isAuthenticated,
+  isSeller,
+  getStripeConnectStatus,
+);
+router.post(
+  '/create-stripe-link',
+  isAuthenticated,
+  isSeller,
+  createStripeConnectLink,
+);
 router.post('/login-seller', loginSeller);
 router.post('/logged-in-seller', isAuthenticated, isSeller, getSeller);

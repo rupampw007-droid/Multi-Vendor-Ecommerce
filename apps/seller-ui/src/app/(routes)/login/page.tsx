@@ -33,9 +33,16 @@ const Login = () => {
       );
       return response.data
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       setServerError(null);
-      router.push('/')
+      const requestedPath = new URLSearchParams(window.location.search).get(
+        'next',
+      )
+      const nextPath =
+        requestedPath?.startsWith('/') && !requestedPath.startsWith('//')
+          ? requestedPath
+          : '/dashboard'
+      router.push(nextPath)
     },
     onError: (error: AxiosError) => {
       const errorMessage = (error.response?.data as {message?: string})?.message || "Invalid creadentials!"
@@ -47,7 +54,7 @@ const Login = () => {
     try {
       // your auth logic here
       loginMutation.mutate(data)
-    } catch (err) {
+    } catch {
       setServerError('Invalid email or password. Please try again.');
     } 
   };

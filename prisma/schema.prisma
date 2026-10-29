@@ -36,6 +36,7 @@ model users {
   avatars   images[]
   shopReviews shopReviews[]
   addresses userAddress[]
+  orders    orders[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 }
@@ -60,6 +61,8 @@ model orders {
   id              String   @id @default(auto()) @map("_id") @db.ObjectId
   paymentIntentId String   @unique
   userId          String   @db.ObjectId
+  user            users    @relation(fields: [userId], references: [id])
+  shopIds         String[] @default([]) @db.ObjectId
   items           Json
   shippingAddress Json?
   subtotal        Float
