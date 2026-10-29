@@ -73,7 +73,7 @@ const SidebarWrapper = () => {
               />
               <SidebarItem
                 isActive={activeSidebar === '/dashboard/payments'}
-                title="Payments"
+                title="Payments & payouts"
                 href="/dashboard/payments"
                 icon={
                   <Payment width={26} height={26} fill={getIconColor('/dashboard/payments')} />

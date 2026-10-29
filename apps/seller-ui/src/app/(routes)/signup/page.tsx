@@ -1,5 +1,4 @@
 'use client';
-import { StripeLogo } from '@/assets/svgs/stripe-logo';
 import CreateShop from '@/shared/modules/auth/create-shop';
 import { useMutation } from '@tanstack/react-query';
 import axios, { AxiosError } from 'axios';
@@ -134,17 +133,6 @@ const Signup = () => {
         ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
         : 'border-slate-300 focus:border-[#000099] focus:ring-[#000099]/10'
     }`;
-
-    const connectStripe = async () => {
-      try {
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_URI}/api/create-stripe-link`, { sellerId });
-        if (response.data.url) {
-          window.location.href = response.data.url;
-        }
-      } catch (error) {
-        console.log(error);
-      }
-    };
 
   return (
     <div className="w-full min-h-screen bg-slate-50 flex flex-col items-center px-4 pt-12 pb-16">
@@ -405,12 +393,23 @@ const Signup = () => {
           <CreateShop sellerId={sellerId} setActiveStep={setActiveStep}/>
         )}
         {activeStep === 3 && (
-          <div className='text-center'>
-            <h3 className='text-2xl font-semibold'>Withdraw Method</h3>
-            <br/>
-            <button onClick={connectStripe}>
-              Connect Stripe <StripeLogo/>
-            </button>
+          <div className="text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-700">
+              <Landmark size={22} />
+            </div>
+            <h3 className="mt-4 text-2xl font-semibold text-slate-900">
+              Your shop is ready
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Sign in to securely connect Stripe payouts. You’ll need to finish
+              this setup before customers can pay for your products.
+            </p>
+            <Link
+              href="/login?next=%2Fdashboard%2Fpayments"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-[#000099] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#0000cc]"
+            >
+              Sign in and connect payouts
+            </Link>
           </div>
         )}
 

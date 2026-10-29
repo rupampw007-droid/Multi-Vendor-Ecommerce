@@ -510,54 +510,272 @@ export const createShop = async (
   }
 };
 
-// create stripe connect account link
-export const createStripeConnectLink = async (
-  req: Request,
+type AuthenticatedSellerRequest = Request & {
+  seller?: {
+    id: string;
+    email: string;
+    stripeId: string | null;
+  };
+};
+
+type StripeConnectedAccount = Stripe.Account | Stripe.V2.Core.Account;
+
+const isV2StripeAccount = (
+  account: StripeConnectedAccount,
+): account is Stripe.V2.Core.Account =>
+  account.object === 'v2.core.account';
+
+const retrieveStripeAccount = async (
+  accountId: string,
+): Promise<StripeConnectedAccount> => {
+  try {
+    return await stripe.v2.core.accounts.retrieve(accountId, {
+      include: ['configuration.recipient', 'identity', 'requirements'],
+    });
+  } catch (error) {
+    if (
+      !(error instanceof Stripe.errors.StripeError) ||
+      (error.statusCode !== 404 && error.code !== 'resource_missing')
+    ) {
+      throw error;
+    }
+
+    return stripe.accounts.retrieve(accountId);
+  }
+};
+
+const isUnavailableStripeAccount = (account: StripeConnectedAccount) =>
+  isV2StripeAccount(account)
+    ? account.closed === true
+    : 'deleted' in account && account.deleted;
+
+const getStripeAccountStatus = (account: StripeConnectedAccount) => {
+  if (isV2StripeAccount(account)) {
+    const recipient = account.configuration?.recipient;
+    const capabilities = recipient?.capabilities?.stripe_balance;
+    const requirements = account.requirements?.entries ?? [];
+    const transfersEnabled =
+      capabilities?.stripe_transfers?.status === 'active';
+    const payoutsEnabled = capabilities?.payouts?.status === 'active';
+
+    return {
+      accountId: account.id,
+      country: account.identity?.country ?? null,
+      detailsSubmitted:
+        account.identity != null &&
+        requirements.every(
+          (entry) => entry.minimum_deadline.status !== 'currently_due',
+        ),
+      chargesEnabled: false,
+      payoutsEnabled,
+      transfersEnabled,
+      ready: transfersEnabled && payoutsEnabled,
+      currentlyDue: requirements
+        .filter((entry) =>
+          ['currently_due', 'past_due'].includes(
+            entry.minimum_deadline.status,
+          ),
+        )
+        .map((entry) => entry.description),
+      eventuallyDue: requirements
+        .filter(
+          (entry) => entry.minimum_deadline.status === 'eventually_due',
+        )
+        .map((entry) => entry.description),
+      disabledReason: account.closed ? 'account_closed' : null,
+    };
+  }
+
+  const transfersEnabled = account.capabilities?.transfers === 'active';
+  const payoutsEnabled = account.payouts_enabled;
+  const chargesEnabled = account.charges_enabled;
+  const ready = transfersEnabled && payoutsEnabled;
+
+  return {
+    accountId: account.id,
+    country: account.country,
+    detailsSubmitted: account.details_submitted,
+    chargesEnabled,
+    payoutsEnabled,
+    transfersEnabled,
+    ready,
+    currentlyDue: account.requirements?.currently_due ?? [],
+    eventuallyDue: account.requirements?.eventually_due ?? [],
+    disabledReason: account.requirements?.disabled_reason ?? null,
+  };
+};
+
+const respondToStripeConnectError = (
+  error: unknown,
+  res: Response,
+): boolean => {
+  if (!(error instanceof Stripe.errors.StripeError)) {
+    return false;
+  }
+
+  console.error('Stripe Connect onboarding request failed', {
+    type: error.type,
+    code: error.code,
+    statusCode: error.statusCode,
+    requestId: error.requestId,
+    message: error.message,
+  });
+
+  res.status(502).json({
+    status: 'error',
+    message:
+      'Stripe could not complete account setup. Check your Stripe Connect configuration and try again.',
+    stripeErrorType: error.type,
+    stripeErrorCode: error.code ?? null,
+    stripeErrorMessage: error.message,
+    stripeRequestId: error.requestId ?? null,
+  });
+  return true;
+};
+
+export const getStripeConnectStatus = async (
+  req: AuthenticatedSellerRequest,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const { sellerId } = req.body;
-    if (!sellerId) return next(new ValidationError('Seller Id is required'));
-    const seller = await prisma.sellers.findUnique({
-      where: {
-        id: sellerId,
-      },
-    });
+    const seller = req.seller;
     if (!seller) {
-      return next(new ValidationError('Seller is not available with this ID'));
+      throw new AuthError('Seller authentication is required');
     }
 
-    const account = await stripe.account.create({
-      type: 'express',
-      email: seller?.email,
-      country: 'IN',
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
-      },
-    });
+    if (!seller.stripeId) {
+      return res.status(200).json({
+        connected: false,
+        ready: false,
+        account: null,
+      });
+    }
 
-    await prisma.sellers.update({
-      where: {
-        id: sellerId,
-      },
-      data: {
-        stripeId: account.id,
-      },
-    });
+    const account = await retrieveStripeAccount(seller.stripeId);
+    if (isUnavailableStripeAccount(account)) {
+      return res.status(200).json({
+        connected: false,
+        ready: false,
+        account: null,
+        message:
+          'The linked Stripe account is no longer available. Please contact support.',
+      });
+    }
 
-    const accountLink = await stripe.accountLinks.create({
-      account: account.id,
-      refresh_url: `http://localhost:3000/success`,
-      return_url: `http://localhost:3000/success`,
-      type: 'account_onboarding',
-    });
-
-    res.json({
-      url: accountLink.url,
+    const status = getStripeAccountStatus(account);
+    return res.status(200).json({
+      connected: true,
+      ready: status.ready && status.country === 'IN',
+      account: status,
     });
   } catch (error) {
+    if (respondToStripeConnectError(error, res)) return;
+    return next(error);
+  }
+};
+
+export const createStripeConnectLink = async (
+  req: AuthenticatedSellerRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const seller = req.seller;
+    if (!seller) {
+      throw new AuthError('Seller authentication is required');
+    }
+
+    let account: StripeConnectedAccount;
+    if (seller.stripeId) {
+      const existingAccount = await retrieveStripeAccount(seller.stripeId);
+      if (isUnavailableStripeAccount(existingAccount)) {
+        throw new ValidationError(
+          'The linked Stripe account is no longer available. Please contact support.',
+        );
+      }
+      account = existingAccount;
+      const accountCountry = isV2StripeAccount(account)
+        ? account.identity?.country
+        : account.country;
+      if (accountCountry !== 'IN') {
+        throw new ValidationError(
+          'This Stripe account is registered in a different country and cannot be changed. Please contact support to reconnect your payout account in India.',
+        );
+      }
+    } else {
+      account = await stripe.v2.core.accounts.create(
+        {
+          contact_email: seller.email,
+          dashboard: 'express',
+          identity: {
+            country: 'IN',
+          },
+          configuration: {
+            recipient: {
+              capabilities: {
+                stripe_balance: {
+                  stripe_transfers: { requested: true },
+                },
+              },
+            },
+          },
+          defaults: {
+            currency: 'inr',
+            responsibilities: {
+              fees_collector: 'application',
+              losses_collector: 'application',
+            },
+          },
+          include: ['configuration.recipient', 'identity', 'requirements'],
+        },
+        { idempotencyKey: `seller-stripe-account-${seller.id}` },
+      );
+
+      await prisma.sellers.update({
+        where: { id: seller.id },
+        data: { stripeId: account.id },
+      });
+    }
+
+    const configuredSellerUiUrl =
+      process.env.SELLER_UI_URL ??
+      (process.env.NODE_ENV === 'production'
+        ? undefined
+        : 'http://localhost:3001');
+    if (!configuredSellerUiUrl) {
+      throw new ValidationError(
+        'SELLER_UI_URL must be configured for Stripe onboarding in production',
+      );
+    }
+    const sellerUiUrl = configuredSellerUiUrl.replace(/\/+$/, '');
+    const refreshUrl = `${sellerUiUrl}/dashboard/payments?refresh=true`;
+    const returnUrl = `${sellerUiUrl}/dashboard/payments?connected=true`;
+    const accountLink = isV2StripeAccount(account)
+      ? await stripe.v2.core.accountLinks.create({
+          account: account.id,
+          use_case: {
+            type: 'account_onboarding',
+            account_onboarding: {
+              configurations: ['recipient'],
+              refresh_url: refreshUrl,
+              return_url: returnUrl,
+            },
+          },
+        })
+      : await stripe.accountLinks.create({
+          account: account.id,
+          refresh_url: refreshUrl,
+          return_url: returnUrl,
+          type: 'account_onboarding',
+        });
+
+    return res.status(200).json({
+      url: accountLink.url,
+      account: getStripeAccountStatus(account),
+    });
+  } catch (error) {
+    if (respondToStripeConnectError(error, res)) return;
     return next(error);
   }
 };
