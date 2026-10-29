@@ -452,6 +452,26 @@ export const createOrder = async (
           paymentIntentId: paymentIntent.id,
           userId,
           shopIds: [...new Set(session.cart.map((item) => item.shopId))],
+          fulfillments: {
+            create: session.sellers.map((seller) => ({
+              shopId: seller.shopId,
+              subtotal: session.cart
+                .filter((item) => item.shopId === seller.shopId)
+                .reduce(
+                  (subtotal, item) =>
+                    subtotal + item.quantity * item.sale_price,
+                  0,
+                ),
+              totalAmount: seller.totalAmount,
+                statusHistory: [
+                  {
+                    status: 'PAID',
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: 'system',
+                  },
+                ],
+            })),
+          },
           items: session.cart,
           shippingAddress: address
             ? {
@@ -585,6 +605,9 @@ export const getSellerOrders = async (
         shopIds: { has: shop.id },
       },
       include: {
+        fulfillments: {
+          where: { shopId: shop.id },
+        },
         user: {
           select: {
             name: true,
@@ -604,6 +627,8 @@ export const getSellerOrders = async (
     res.status(200).json({
       orders: orders.map((order) => ({
         ...order,
+        fulfillment: order.fulfillments[0] ?? null,
+        fulfillments: undefined,
         items: Array.isArray(order.items)
           ? order.items.filter(
               (item) =>
@@ -616,6 +641,245 @@ export const getSellerOrders = async (
           : [],
       })),
     });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const fulfillmentStatuses = [
+  'PAID',
+  'PROCESSING',
+  'SHIPPED',
+  'OUT_FOR_DELIVERY',
+  'DELIVERED',
+] as const;
+type FulfillmentStatus = (typeof fulfillmentStatuses)[number];
+
+const allowedFulfillmentTransitions: Record<
+  FulfillmentStatus,
+  FulfillmentStatus[]
+> = {
+  PAID: ['PROCESSING'],
+  PROCESSING: ['SHIPPED'],
+  SHIPPED: ['OUT_FOR_DELIVERY'],
+  OUT_FOR_DELIVERY: ['DELIVERED'],
+  DELIVERED: [],
+};
+
+const getSellerShop = async (sellerId: string | undefined) => {
+  if (!sellerId) {
+    throw new ValidationError('Seller authentication is required');
+  }
+  const shop = await prisma.shops.findUnique({ where: { sellerId } });
+  if (!shop) {
+    throw new ValidationError('Seller shop was not found');
+  }
+  return shop;
+};
+
+export const getSellerOrderDetails = async (
+  req: SellerAuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const shop = await getSellerShop(req.seller?.id);
+    const order = await prisma.orders.findFirst({
+      where: {
+        id: req.params.id,
+        shopIds: { has: shop.id },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatars: { select: { url: true } },
+          },
+        },
+        fulfillments: { where: { shopId: shop.id } },
+      },
+    });
+
+    if (!order) {
+      return next(new NotFoundError('Order not found'));
+    }
+
+    const items = Array.isArray(order.items)
+      ? order.items.filter(
+          (item) =>
+            item !== null &&
+            typeof item === 'object' &&
+            !Array.isArray(item) &&
+            'shopId' in item &&
+            item.shopId === shop.id,
+        )
+      : [];
+
+    return res.status(200).json({
+      order: {
+        ...order,
+        items,
+        fulfillment: order.fulfillments[0] ?? null,
+        fulfillments: undefined,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const updateSellerOrderFulfillment = async (
+  req: SellerAuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const shop = await getSellerShop(req.seller?.id);
+    const { status, carrier, trackingNumber, estimatedDelivery, sellerNotes } =
+      req.body as {
+        status?: unknown;
+        carrier?: unknown;
+        trackingNumber?: unknown;
+        estimatedDelivery?: unknown;
+        sellerNotes?: unknown;
+      };
+
+    if (
+      typeof status !== 'string' ||
+      !fulfillmentStatuses.includes(status as FulfillmentStatus)
+    ) {
+      throw new ValidationError('A valid fulfillment status is required');
+    }
+
+    const optionalTextFields = [
+      ['carrier', carrier, 100],
+      ['tracking number', trackingNumber, 200],
+      ['seller notes', sellerNotes, 2000],
+    ] as const;
+    for (const [label, value, maxLength] of optionalTextFields) {
+      if (
+        value !== undefined &&
+        value !== null &&
+        (typeof value !== 'string' || value.length > maxLength)
+      ) {
+        throw new ValidationError(`The ${label} is invalid`);
+      }
+    }
+    if (
+      estimatedDelivery !== undefined &&
+      estimatedDelivery !== null &&
+      (typeof estimatedDelivery !== 'string' ||
+        !Number.isFinite(Date.parse(estimatedDelivery)))
+    ) {
+      throw new ValidationError('The estimated delivery date is invalid');
+    }
+
+    const order = await prisma.orders.findFirst({
+      where: {
+        id: req.params.id,
+        shopIds: { has: shop.id },
+      },
+      include: {
+        fulfillments: { where: { shopId: shop.id } },
+      },
+    });
+    if (!order) {
+      return next(new NotFoundError('Order not found'));
+    }
+
+    const nextStatus = status as FulfillmentStatus;
+    const currentFulfillment = order.fulfillments[0];
+    const currentStatus = (currentFulfillment?.status ??
+      'PAID') as FulfillmentStatus;
+    if (
+      nextStatus !== currentStatus &&
+      !allowedFulfillmentTransitions[currentStatus].includes(nextStatus)
+    ) {
+      throw new ValidationError(
+        `Cannot change fulfillment from ${currentStatus} to ${nextStatus}`,
+      );
+    }
+    const effectiveTrackingNumber =
+      trackingNumber === undefined
+        ? currentFulfillment?.trackingNumber
+        : typeof trackingNumber === 'string'
+          ? trackingNumber.trim()
+          : null;
+    if (
+      ['SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(nextStatus) &&
+      !effectiveTrackingNumber
+    ) {
+      throw new ValidationError(
+        'Add a tracking number before marking the order as shipped',
+      );
+    }
+
+    const now = new Date();
+    const statusHistory: Prisma.InputJsonValue[] =
+      currentFulfillment?.statusHistory.flatMap((entry) =>
+        entry === null ? [] : [entry],
+      ) ?? [];
+    const updatedHistory =
+      nextStatus === currentStatus
+        ? statusHistory
+        : [
+            ...statusHistory,
+            {
+              status: nextStatus,
+              updatedAt: now.toISOString(),
+              updatedBy: shop.sellerId,
+            },
+          ];
+    const updateData = {
+      status: nextStatus,
+      carrier: typeof carrier === 'string' ? carrier.trim() || null : undefined,
+      trackingNumber:
+        typeof trackingNumber === 'string'
+          ? trackingNumber.trim() || null
+          : undefined,
+      estimatedDelivery:
+        typeof estimatedDelivery === 'string'
+          ? new Date(estimatedDelivery)
+          : estimatedDelivery === null
+            ? null
+            : undefined,
+      sellerNotes:
+        typeof sellerNotes === 'string'
+          ? sellerNotes.trim() || null
+          : undefined,
+      statusHistory: updatedHistory,
+      ...(nextStatus === 'SHIPPED' && currentStatus !== 'SHIPPED'
+        ? { shippedAt: now }
+        : {}),
+      ...(nextStatus === 'DELIVERED' && currentStatus !== 'DELIVERED'
+        ? { deliveredAt: now }
+        : {}),
+    };
+
+    const fulfillment = currentFulfillment
+      ? await prisma.orderFulfillments.update({
+          where: { id: currentFulfillment.id },
+          data: updateData,
+        })
+      : await prisma.orderFulfillments.create({
+          data: {
+            orderId: order.id,
+            shopId: shop.id,
+            ...updateData,
+            statusHistory: [
+              {
+                status: 'PAID',
+                updatedAt: order.createdAt.toISOString(),
+                updatedBy: 'system',
+              },
+              ...updatedHistory,
+            ],
+          },
+        });
+
+    return res.status(200).json({ fulfillment });
   } catch (error) {
     return next(error);
   }
