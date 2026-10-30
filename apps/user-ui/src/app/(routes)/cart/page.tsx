@@ -50,12 +50,6 @@ const formatINR = (value?: number) =>
       }).format(value)
     : ''
 
-// Coupon amounts are checked again by the order service before payment.
-const DEMO_COUPONS: Record<string, { type: 'percent' | 'flat'; value: number }> = {
-  SAVE10: { type: 'percent', value: 10 },
-  FLAT100: { type: 'flat', value: 100 },
-}
-
 const SectionTitle = ({
   step,
   children,
@@ -85,10 +79,14 @@ const CartPage = () => {
   useEffect(() => setMounted(true), [])
 
   const [couponInput, setCouponInput] = useState('')
-  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null)
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string
+    discountAmount: number
+  } | null>(null)
   const [couponError, setCouponError] = useState('')
   const [addressId, setAddressId] = useState('')
   const [isStartingCheckout, setIsStartingCheckout] = useState(false)
+  const [isVerifyingCoupon, setIsVerifyingCoupon] = useState(false)
 
   const {
     data: addresses = [],
@@ -126,27 +124,64 @@ const CartPage = () => {
     [cart]
   )
 
-  const discount = useMemo(() => {
-    if (!appliedCoupon) return 0
-    const c = DEMO_COUPONS[appliedCoupon]
-    if (!c) return 0
-    const raw = c.type === 'percent' ? (subtotal * c.value) / 100 : c.value
-    return Math.min(Math.round(raw), subtotal)
-  }, [appliedCoupon, subtotal])
+  const discount = useMemo(
+    () => (appliedCoupon ? appliedCoupon.discountAmount : 0),
+    [appliedCoupon]
+  )
 
   const total = Math.max(subtotal - discount, 0)
 
   if (!mounted) return null
 
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     const code = couponInput.trim().toUpperCase()
-    if (!code) return
-    if (DEMO_COUPONS[code]) {
-      setAppliedCoupon(code)
-      setCouponError('')
-    } else {
+    if (!code) {
+      setCouponError('Please enter a coupon code')
+      return
+    }
+
+    setCouponError('')
+    setIsVerifyingCoupon(true)
+
+    try {
+      const response = await axiosInstance.put<{
+        valid: boolean
+        coupon?: {
+          code: string
+          discountAmount: number
+        }
+      }>('/order/api/verify-coupon', {
+        coupon: code,
+        subtotal,
+      })
+
+      if (!response.data.valid || !response.data.coupon) {
+        throw new Error('Coupon verification failed')
+      }
+
+      setAppliedCoupon({
+        code: response.data.coupon.code,
+        discountAmount: response.data.coupon.discountAmount,
+      })
+      setCouponInput(response.data.coupon.code)
+    } catch (error) {
       setAppliedCoupon(null)
-      setCouponError('Invalid coupon code')
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof error.response === 'object' &&
+        error.response !== null &&
+        'data' in error.response &&
+        typeof error.response.data === 'object' &&
+        error.response.data !== null &&
+        'message' in error.response.data &&
+        typeof error.response.data.message === 'string'
+          ? error.response.data.message
+          : 'Invalid coupon code'
+      setCouponError(message)
+    } finally {
+      setIsVerifyingCoupon(false)
     }
   }
 
@@ -168,7 +203,7 @@ const CartPage = () => {
           quantity: quantity ?? 1,
         })),
         selectedAddressId: addressId,
-        coupon: appliedCoupon,
+        coupon: appliedCoupon?.code ?? null,
       })
       router.push(`/checkout?sessionId=${encodeURIComponent(response.data.sessionId)}`)
     } catch (error) {
@@ -470,7 +505,7 @@ const CartPage = () => {
                     <span className="flex items-center gap-2">
                       <Tag size={15} />
                       <span>
-                        <span className="font-semibold">{appliedCoupon}</span>{' '}
+                      <span className="font-semibold">{appliedCoupon.code}</span>{' '}
                         applied (-{formatINR(discount)})
                       </span>
                     </span>
@@ -494,17 +529,19 @@ const CartPage = () => {
                         type="text"
                         value={couponInput}
                         onChange={(e) => setCouponInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && applyCoupon()}
+                        onKeyDown={(e) => e.key === 'Enter' && void applyCoupon()}
                         placeholder="Enter coupon code"
-                        className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm uppercase placeholder:normal-case outline-none transition hover:border-gray-400 focus:border-gray-900 focus:ring-4 focus:ring-gray-900/10"
+                        disabled={isVerifyingCoupon}
+                        className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm uppercase placeholder:normal-case outline-none transition hover:border-gray-400 focus:border-gray-900 focus:ring-4 focus:ring-gray-900/10 disabled:cursor-not-allowed disabled:bg-gray-50"
                       />
                     </div>
                     <button
                       type="button"
-                      onClick={applyCoupon}
-                      className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700"
+                      onClick={() => void applyCoupon()}
+                      disabled={isVerifyingCoupon}
+                      className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                     >
-                      Apply
+                      {isVerifyingCoupon ? 'Checking...' : 'Apply'}
                     </button>
                   </div>
                 )}

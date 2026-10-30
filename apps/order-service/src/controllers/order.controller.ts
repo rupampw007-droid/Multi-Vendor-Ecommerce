@@ -100,6 +100,156 @@ const getPaymentSession = async (
   return rawSession ? (JSON.parse(rawSession) as PaymentSession) : null;
 };
 
+const normalizeCouponCode = (coupon?: string | null): string =>
+  coupon?.trim().toUpperCase() ?? '';
+
+const DEFAULT_COUPONS: Record<
+  string,
+  { discountType: 'percent' | 'flat'; discountValue: number }
+> = {
+  SAVE10: { discountType: 'percent', discountValue: 10 },
+  FLAT100: { discountType: 'flat', discountValue: 100 },
+};
+
+type CouponConfig = {
+  code: string;
+  discountType: 'percent' | 'flat';
+  discountValue: number;
+};
+
+const parseCouponType = (
+  discountType?: string | null,
+): 'percent' | 'flat' | null => {
+  const normalizedType = discountType?.trim().toLowerCase();
+
+  if (!normalizedType) {
+    return null;
+  }
+
+  if (normalizedType.includes('percent')) {
+    return 'percent';
+  }
+
+  if (
+    normalizedType.includes('flat') ||
+    normalizedType.includes('fixed') ||
+    normalizedType.includes('amount')
+  ) {
+    return 'flat';
+  }
+
+  return null;
+};
+
+const calculateCouponDiscount = (
+  subtotalAmount: number,
+  coupon: CouponConfig,
+): number => {
+  if (!Number.isFinite(subtotalAmount) || subtotalAmount <= 0) {
+    return 0;
+  }
+
+  const discountValue = Number(coupon.discountValue);
+  if (!Number.isFinite(discountValue) || discountValue <= 0) {
+    return 0;
+  }
+
+  const discountAmount =
+    coupon.discountType === 'percent'
+      ? Math.min(Math.round(subtotalAmount * (discountValue / 100)), subtotalAmount)
+      : Math.min(discountValue, subtotalAmount);
+
+  return Math.max(0, discountAmount);
+};
+
+const getCouponConfig = async (
+  code: string,
+): Promise<CouponConfig | null> => {
+  const normalizedCoupon = normalizeCouponCode(code);
+  if (!normalizedCoupon) {
+    return null;
+  }
+
+  const defaultCoupon = DEFAULT_COUPONS[normalizedCoupon];
+  if (defaultCoupon) {
+    return {
+      code: normalizedCoupon,
+      discountType: defaultCoupon.discountType,
+      discountValue: defaultCoupon.discountValue,
+    };
+  }
+
+  const storedCoupon = await prisma.discount_codes.findUnique({
+    where: {
+      discountCode: normalizedCoupon,
+    },
+    select: {
+      discountCode: true,
+      discountType: true,
+      discountValue: true,
+    },
+  });
+
+  if (!storedCoupon) {
+    return null;
+  }
+
+  const discountType = parseCouponType(storedCoupon.discountType);
+  const discountValue = Number(storedCoupon.discountValue);
+
+  if (!discountType || !Number.isFinite(discountValue) || discountValue <= 0) {
+    return null;
+  }
+
+  return {
+    code: normalizeCouponCode(storedCoupon.discountCode),
+    discountType,
+    discountValue,
+  };
+};
+
+export const verifyCouponCode = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { coupon, subtotal } = req.body as {
+      coupon?: string | null;
+      subtotal?: number | null;
+    };
+    const normalizedCoupon = normalizeCouponCode(coupon);
+
+    if (!normalizedCoupon) {
+      throw new ValidationError('A coupon code is required');
+    }
+
+    const couponConfig = await getCouponConfig(normalizedCoupon);
+    if (!couponConfig) {
+      throw new ValidationError('Coupon code is invalid');
+    }
+
+    const validatedSubtotal =
+      typeof subtotal === 'number' && Number.isFinite(subtotal) ? subtotal : 0;
+    const discountAmount = calculateCouponDiscount(
+      validatedSubtotal,
+      couponConfig,
+    );
+
+    return res.status(200).json({
+      valid: true,
+      coupon: {
+        code: couponConfig.code,
+        discountType: couponConfig.discountType,
+        discountValue: couponConfig.discountValue,
+        discountAmount,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 export const createPaymentIntent = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -316,16 +466,15 @@ export const createPaymentSession = async (
     if (!Number.isFinite(subtotalAmount) || subtotalAmount <= 0) {
       throw new ValidationError('Order total is not a valid payment amount');
     }
-    const normalizedCoupon = coupon?.trim().toUpperCase();
-    if (normalizedCoupon && !['SAVE10', 'FLAT100'].includes(normalizedCoupon)) {
+    const normalizedCoupon = normalizeCouponCode(coupon);
+    const couponConfig =
+      normalizedCoupon && (await getCouponConfig(normalizedCoupon));
+    if (normalizedCoupon && !couponConfig) {
       throw new ValidationError('Coupon code is invalid');
     }
-    const discountAmount =
-      normalizedCoupon === 'SAVE10'
-        ? Math.min(Math.round(subtotalAmount * 0.1), subtotalAmount)
-        : normalizedCoupon === 'FLAT100'
-          ? Math.min(100, subtotalAmount)
-          : 0;
+    const discountAmount = couponConfig
+      ? calculateCouponDiscount(subtotalAmount, couponConfig)
+      : 0;
     const subtotalInMinorUnits = Math.round(subtotalAmount * 100);
     const totalInMinorUnits =
       subtotalInMinorUnits - Math.round(discountAmount * 100);
