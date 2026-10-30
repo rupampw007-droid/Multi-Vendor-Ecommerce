@@ -1109,3 +1109,40 @@ export const getOrderDetails = async (
     return next(error);
   }
 };
+
+export const getUserOrders = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new ValidationError('Customer authentication is required');
+    }
+
+    const orders = await prisma.orders.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        createdAt: true,
+        subtotal: true,
+        totalAmount: true,
+        currency: true,
+        status: true,
+        fulfillments: {
+          select: {
+            status: true,
+          },
+        },
+        items: true,
+      },
+    });
+
+    return res.status(200).json({ success: true, orders });
+  } catch (error) {
+    return next(error);
+  }
+};

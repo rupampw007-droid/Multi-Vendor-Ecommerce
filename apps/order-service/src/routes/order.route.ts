@@ -6,6 +6,7 @@ import {
   getOrderDetails,
   getSellerOrderDetails,
   getSellerOrders,
+  getUserOrders,
   updateSellerOrderFulfillment,
   verifyCouponCode,
   verifyingPaymentSession,
@@ -38,4 +39,5 @@ router.get(
 )
 
 router.put("/verify-coupon", isAuthenticated, verifyCouponCode)
+router.get('/get-user-orders', isAuthenticated, getUserOrders)
 export default router;

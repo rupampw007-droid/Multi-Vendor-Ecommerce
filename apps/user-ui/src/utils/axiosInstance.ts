@@ -14,8 +14,10 @@ let refreshPromise: Promise<void> | null = null;
 const authenticatedPaths = [
   '/api/logged-in-user',
   '/api/user-profile',
+  '/api/change-password-user',
   '/api/user-addresses',
   '/api/logout-user',
+  '/order/api/get-user-orders',
   '/order/api/create-payment-session',
   '/order/api/create-payment-intent',
   '/order/api/verify-payment-session',
