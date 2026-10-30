@@ -7,9 +7,11 @@ import {
   getSellerOrderDetails,
   getSellerOrders,
   updateSellerOrderFulfillment,
+  verifyCouponCode,
   verifyingPaymentSession,
 } from '../controllers/order.controller';
 import { isSeller } from '@repo/middleware/authorizeRoles';
+
 
 const router: Router = express.Router();
 
@@ -34,4 +36,6 @@ router.get(
   isAuthenticated,
   getOrderDetails
 )
+
+router.put("/verify-coupon", isAuthenticated, verifyCouponCode)
 export default router;
