@@ -18,6 +18,7 @@ import {
   verifyUser,
   verifyUserForgotPassword,
   createStripeConnectLink,
+  changeUserPassword,
   getStripeConnectStatus,
   loginSeller,
   getSeller,
@@ -34,6 +35,7 @@ router.post('/login-user', loginUser);
 router.post('/refresh-token', refreshToken);
 router.get('/logged-in-user', isAuthenticated, getUser);
 router.patch('/user-profile', isAuthenticated, updateUserProfile);
+router.patch('/change-password-user', isAuthenticated, changeUserPassword);
 router.post('/logout-user', logoutUser);
 router
   .route('/user-addresses')

@@ -3,9 +3,10 @@
 import QuickActionCard from '@/shared/components/cards/quick-action-card'
 import StatCard from '@/shared/components/cards/stat-card'
 import ShippingAddressSection from '@/shared/components/shippingAddress'
+import ChangePassword from '@/shared/components/change-password'
 import useUser from '@/hooks/useUser'
 import axiosInstance from '@/utils/axiosInstance'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
   Check,
@@ -56,6 +57,21 @@ interface ProfileResponse {
   user: ProfileUser
 }
 
+interface UserOrder {
+  id: string
+  createdAt: string
+  subtotal: number
+  totalAmount: number
+  currency: string
+  status: string
+  fulfillments: Array<{ status: string }>
+  items: unknown
+}
+
+interface UserOrdersResponse {
+  orders: UserOrder[]
+}
+
 const formatJoinedDate = (dateString?: string) => {
   if (!dateString) return '—'
   const date = new Date(dateString)
@@ -75,6 +91,29 @@ const getInitials = (name?: string) =>
     .map((part) => part[0]?.toUpperCase())
     .join('') || 'U'
 
+const formatOrderTotal = (amount: number, currency: string) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+    maximumFractionDigits: 2,
+  }).format(amount)
+
+const getOrderStatus = (order: UserOrder) => {
+  const statuses = order.fulfillments.map((fulfillment) =>
+    fulfillment.status.toUpperCase()
+  )
+
+  if (statuses.length > 0) {
+    if (statuses.every((status) => status === 'DELIVERED')) return 'DELIVERED'
+    if (statuses.includes('OUT_FOR_DELIVERY')) return 'OUT FOR DELIVERY'
+    if (statuses.includes('SHIPPED')) return 'SHIPPED'
+    if (statuses.includes('PROCESSING')) return 'PROCESSING'
+    return statuses[0].replaceAll('_', ' ')
+  }
+
+  return order.status.toUpperCase().replaceAll('_', ' ')
+}
+
 const ProfileContent = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -85,6 +124,25 @@ const ProfileContent = () => {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [formError, setFormError] = useState('')
+  const {
+    data: orders = [],
+    isLoading: ordersLoading,
+    isError: ordersError,
+    refetch: refetchOrders,
+  } = useQuery({
+    queryKey: ['user-orders'],
+    queryFn: async () => {
+      const response = await axiosInstance.get<UserOrdersResponse>(
+        '/order/api/get-user-orders'
+      )
+      return response.data.orders
+    },
+  })
+
+  const processingOrderCount = orders.filter(
+    (order) => getOrderStatus(order) !== 'DELIVERED'
+  ).length
+  const completedOrderCount = orders.length - processingOrderCount
 
   useEffect(() => {
     if (!isEditOpen || !user) return
@@ -154,20 +212,20 @@ const ProfileContent = () => {
         >
           <StatCard
             title="Total Orders"
-            value="—"
-            description="Order history will appear here."
+            value={ordersLoading ? '…' : String(orders.length)}
+            description="Orders placed from your account."
             icon={<ClipboardList size={21} />}
           />
           <StatCard
             title="Processing Orders"
-            value="—"
-            description="There is no order status data yet."
+            value={ordersLoading ? '…' : String(processingOrderCount)}
+            description="Orders not yet delivered."
             icon={<PackageCheck size={21} />}
           />
           <StatCard
             title="Completed Orders"
-            value="—"
-            description="Completed order totals are not available yet."
+            value={ordersLoading ? '…' : String(completedOrderCount)}
+            description="Orders delivered successfully."
             icon={<Check size={21} />}
           />
         </section>
@@ -325,6 +383,114 @@ const ProfileContent = () => {
                   </>
                 ) : null}
               </div>
+            ) : activeSection === 'My Orders' ? (
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-100 px-5 py-5 sm:px-7">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    My orders
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Review your recent purchases and order status.
+                  </p>
+                </div>
+                {ordersLoading ? (
+                  <div className="space-y-3 p-5 sm:p-7" aria-label="Loading orders">
+                    {[1, 2, 3].map((row) => (
+                      <div
+                        key={row}
+                        className="h-14 animate-pulse rounded-lg bg-gray-100"
+                      />
+                    ))}
+                  </div>
+                ) : ordersError ? (
+                  <div className="p-8 text-center">
+                    <p role="alert" className="text-sm text-red-700">
+                      Your orders could not be loaded.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void refetchOrders()}
+                      className="mt-2 text-sm font-semibold text-blue-700 hover:underline"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : orders.length === 0 ? (
+                  <p className="px-5 py-12 text-center text-sm text-gray-500">
+                    You have not placed any orders yet.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px] divide-y divide-gray-100 text-left text-sm">
+                      <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                        <tr>
+                          <th scope="col" className="px-5 py-3 font-semibold sm:px-7">
+                            Order
+                          </th>
+                          <th scope="col" className="px-5 py-3 font-semibold">
+                            Date
+                          </th>
+                          <th scope="col" className="px-5 py-3 font-semibold">
+                            Items
+                          </th>
+                          <th scope="col" className="px-5 py-3 font-semibold">
+                            Total
+                          </th>
+                          <th scope="col" className="px-5 py-3 font-semibold">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {orders.map((order) => {
+                          const itemCount = Array.isArray(order.items)
+                            ? order.items.length
+                            : 0
+                          const status = getOrderStatus(order)
+                          const isDelivered = status === 'DELIVERED'
+
+                          return (
+                            <tr key={order.id} className="text-gray-700">
+                              <th
+                                scope="row"
+                                className="whitespace-nowrap px-5 py-4 font-medium text-gray-900 sm:px-7"
+                              >
+                                #{order.id.slice(-8).toUpperCase()}
+                              </th>
+                              <td className="whitespace-nowrap px-5 py-4">
+                                {new Intl.DateTimeFormat('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                }).format(new Date(order.createdAt))}
+                              </td>
+                              <td className="px-5 py-4">
+                                {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                              </td>
+                              <td className="whitespace-nowrap px-5 py-4 font-medium text-gray-900">
+                                {formatOrderTotal(order.totalAmount, order.currency)}
+                              </td>
+                              <td className="px-5 py-4">
+                                <span
+                                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                    isDelivered
+                                      ? 'bg-green-50 text-green-700'
+                                      : 'bg-blue-50 text-blue-700'
+                                  }`}
+                                >
+                                  {status}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : activeSection === 'Change Password' ? (
+              <ChangePassword />
             ) : activeSection === 'Shipping Address' ? (
               <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7">
                 <div className="mb-6">

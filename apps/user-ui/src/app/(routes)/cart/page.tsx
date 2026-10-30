@@ -18,11 +18,11 @@ import {
   X,
 } from 'lucide-react'
 import { useStore } from '@/store'
-import useUser from '@/hooks/useUser'
 import useLocationTracking from '@/hooks/useLocationTracking'
 import useDeviceTracking from '@/hooks/useDeviceTracking'
 import axiosInstance from '@/utils/axiosInstance'
 import toast from 'react-hot-toast'
+import useRequireAuth from '@/hooks/useRequiredAuth'
 
 interface ShippingAddress {
   id: string
@@ -67,7 +67,7 @@ const SectionTitle = ({
 
 const CartPage = () => {
   const router = useRouter()
-  const { user } = useUser()
+  const { user } = useRequireAuth()
   const location = useLocationTracking()
   const deviceInfo = useDeviceTracking()
 

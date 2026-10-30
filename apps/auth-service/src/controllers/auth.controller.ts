@@ -262,6 +262,58 @@ export const updateUserProfile = async (
   }
 };
 
+export const changeUserPassword = async (
+  req: AuthenticatedUserRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+    const { currentPassword, newPassword } = req.body ?? {};
+
+    if (
+      typeof currentPassword !== 'string' ||
+      !currentPassword ||
+      typeof newPassword !== 'string' ||
+      newPassword.length < 8
+    ) {
+      throw new ValidationError(
+        'Current password and a new password of at least 8 characters are required',
+      );
+    }
+
+    const user = await prisma.users.findUnique({
+      where: { id: userId },
+      select: { id: true, password: true },
+    });
+    if (!user?.password) {
+      throw new AuthError('Password authentication is unavailable for this account');
+    }
+
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      throw new AuthError('Current password is incorrect');
+    }
+    if (await bcrypt.compare(newPassword, user.password)) {
+      throw new ValidationError(
+        'New password cannot be the same as your current password',
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await prisma.users.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully',
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 export const logoutUser = async (
   _req: Request,
   res: Response,
