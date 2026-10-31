@@ -1,157 +1,277 @@
-import { kafka } from '@repo/utils/kafka';
-import { WebSocketServer, WebSocket } from 'ws';
-import { Server as HttpServer } from 'http';
+import prisma from '@repo/lib/prisma/prisma';
 import redis from '@repo/lib/redis';
-import { count } from 'console';
+import jwt from 'jsonwebtoken';
+import { IncomingMessage, Server as HttpServer } from 'http';
+import { WebSocket, WebSocketServer } from 'ws';
 
-const producer = kafka.producer();
-const connectedUsers: Map<string, WebSocket> = new Map();
-const unseenCounts: Map<string, number> = new Map();
-
-type IncomingMessage = {
+type ChatRole = 'user' | 'seller';
+type ChatIdentity = { role: ChatRole; id: string };
+type ClientEvent = {
   type?: string;
-  fromUserId: string;
-  toUserId: string;
-  messageBody: string;
-  conversationId: string;
-  senderType: string;
+  role?: ChatRole;
+  conversationId?: string;
+  messageId?: string;
+  isTyping?: boolean;
+};
+
+const connectedSockets = new Map<string, Set<WebSocket>>();
+const identityKey = ({ role, id }: ChatIdentity) => `${role}:${id}`;
+const presenceKey = ({ role, id }: ChatIdentity) => `online:${role}:${id}`;
+
+const send = (socket: WebSocket, event: unknown) => {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(event));
+  }
+};
+
+export const emitToIdentity = (
+  role: ChatRole,
+  id: string,
+  event: unknown,
+): boolean => {
+  const sockets = connectedSockets.get(identityKey({ role, id }));
+  if (!sockets?.size) return false;
+  for (const socket of sockets) send(socket, event);
+  return true;
+};
+
+const getCookie = (request: IncomingMessage, name: string) => {
+  const cookies = request.headers.cookie?.split(';') ?? [];
+  const entry = cookies.find((cookie) => cookie.trim().startsWith(`${name}=`));
+  if (!entry) return null;
+  try {
+    return decodeURIComponent(entry.trim().slice(name.length + 1));
+  } catch {
+    return null;
+  }
+};
+
+const authenticateSocket = (
+  request: IncomingMessage,
+  role: ChatRole,
+): ChatIdentity | null => {
+  const token = getCookie(
+    request,
+    role === 'user' ? 'access_token' : 'seller-access-token',
+  );
+  if (!token || !process.env.ACCESS_TOKEN_SECRET) return null;
+
+  try {
+    const claims = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET) as {
+      id?: string;
+      role?: string;
+    };
+    if (
+      typeof claims.id !== 'string' ||
+      claims.role !== role
+    ) {
+      return null;
+    }
+    return { id: claims.id, role: claims.role };
+  } catch {
+    return null;
+  }
+};
+
+const getCounterparty = async (
+  conversationId: string,
+  identity: ChatIdentity,
+): Promise<ChatIdentity | null> => {
+  const participants = await prisma.participant.findMany({
+    where: { conversationId },
+    select: { userId: true, sellerId: true },
+  });
+  const otherParticipant = participants.find((participant) =>
+    identity.role === 'user'
+      ? participant.sellerId
+      : participant.userId,
+  );
+  const id =
+    identity.role === 'user'
+      ? otherParticipant?.sellerId
+      : otherParticipant?.userId;
+  return id
+    ? { id, role: identity.role === 'user' ? 'seller' : 'user' }
+    : null;
+};
+
+const isParticipant = async (
+  conversationId: string,
+  identity: ChatIdentity,
+) => {
+  const participant = await prisma.participant.findFirst({
+    where: {
+      conversationId,
+      ...(identity.role === 'user'
+        ? { userId: identity.id }
+        : { sellerId: identity.id }),
+    },
+    select: { id: true },
+  });
+  return Boolean(participant);
+};
+
+const notifyPresence = async (
+  identity: ChatIdentity,
+  isOnline: boolean,
+) => {
+  const memberships = await prisma.participant.findMany({
+    where:
+      identity.role === 'user'
+        ? { userId: identity.id }
+        : { sellerId: identity.id },
+    select: { conversationId: true },
+  });
+  if (!memberships.length) return;
+
+  const peers = await prisma.participant.findMany({
+    where: {
+      conversationId: { in: memberships.map(({ conversationId }) => conversationId) },
+      ...(identity.role === 'user'
+        ? { sellerId: { not: null } }
+        : { userId: { not: null } }),
+    },
+    select: { userId: true, sellerId: true },
+  });
+  const peerIds = new Set(
+    peers
+      .map((participant) =>
+        identity.role === 'user' ? participant.sellerId : participant.userId,
+      )
+      .filter((id): id is string => Boolean(id)),
+  );
+  for (const peerId of peerIds) {
+    emitToIdentity(identity.role === 'user' ? 'seller' : 'user', peerId, {
+      type: 'presence_update',
+      payload: { role: identity.role, id: identity.id, isOnline },
+    });
+  }
+};
+
+const handleClientEvent = async (
+  socket: WebSocket,
+  identity: ChatIdentity,
+  event: ClientEvent,
+) => {
+  if (event.type === 'heartbeat') {
+    await redis.expire(presenceKey(identity), 300);
+    return;
+  }
+
+  if (
+    event.type !== 'typing' &&
+    event.type !== 'delivered'
+  ) {
+    return;
+  }
+  if (!event.conversationId || !(await isParticipant(event.conversationId, identity))) {
+    send(socket, { type: 'error', payload: { message: 'Conversation access denied.' } });
+    return;
+  }
+
+  const counterparty = await getCounterparty(event.conversationId, identity);
+  if (!counterparty) return;
+
+  if (event.type === 'typing') {
+    emitToIdentity(counterparty.role, counterparty.id, {
+      type: 'typing',
+      payload: {
+        conversationId: event.conversationId,
+        role: identity.role,
+        isTyping: Boolean(event.isTyping),
+      },
+    });
+    return;
+  }
+
+  if (!event.messageId) return;
+  const message = await prisma.message.findFirst({
+    where: {
+      id: event.messageId,
+      conversationId: event.conversationId,
+      senderType: counterparty.role,
+    },
+    select: { id: true, senderId: true },
+  });
+  if (!message) return;
+
+  await prisma.message.updateMany({
+    where: { id: message.id, status: { not: 'seen' } },
+    data: { status: 'delivered' },
+  });
+  emitToIdentity(counterparty.role, message.senderId, {
+    type: 'message_status',
+    payload: {
+      conversationId: event.conversationId,
+      messageId: message.id,
+      status: 'delivered',
+    },
+  });
 };
 
 export async function createWebSocketServer(server: HttpServer) {
   const wss = new WebSocketServer({ server });
 
-  await producer.connect();
-  console.log('Kafka producer connected');
+  wss.on('connection', (socket, request) => {
+    let identity: ChatIdentity | null = null;
 
-  wss.on('connection', (ws: WebSocket) => {
-    console.log('New Websocket Connection!');
-
-    let registeredUserId: string | null = null;
-
-    wss.on('message', async (rawMessage) => {
+    socket.on('message', (rawMessage) => {
       try {
-        const messageStr = rawMessage.toString();
-
-        // Register the user on first plain message (non-JS)
-        if (!registeredUserId && !messageStr.startsWith('{')) {
-          registeredUserId = messageStr;
-          connectedUsers.set(registeredUserId!, ws);
-          console.log(`registered websocket for userId: ${registeredUserId}`);
-
-          const isSeller = registeredUserId?.startsWith('seller_');
-          const redisKey = isSeller
-            ? `online:seller:${registeredUserId?.replace('seller_', '')}`
-            : `online:user:${registeredUserId}`;
-          await redis.set(redisKey, '1');
-          await redis.expire(redisKey, 300);
+        const event = JSON.parse(rawMessage.toString()) as ClientEvent;
+        if (!identity) {
+          if (event.type !== 'register' || !event.role) {
+            socket.close(1008, 'Chat role registration required');
+            return;
+          }
+          const authenticatedIdentity = authenticateSocket(request, event.role);
+          if (!authenticatedIdentity) {
+            socket.close(1008, 'Authentication required');
+            return;
+          }
+          identity = authenticatedIdentity;
+          const key = identityKey(identity);
+          const sockets = connectedSockets.get(key) ?? new Set<WebSocket>();
+          sockets.add(socket);
+          connectedSockets.set(key, sockets);
+          void redis
+            .set(presenceKey(identity), '1', 'EX', 300)
+            .then(() => notifyPresence(authenticatedIdentity, true))
+            .catch((error) => console.error('Unable to publish chat presence:', error));
+          send(socket, {
+            type: 'ready',
+            payload: { role: identity.role, id: identity.id },
+          });
           return;
         }
 
-        // process the JSON message
-        const data: IncomingMessage = JSON.parse(messageStr);
-
-        // If it's seen update
-        if (data.type === 'MARK_AS_SEEN' && registeredUserId) {
-          const seenKey = `${registeredUserId}_${data.conversationId}`;
-          unseenCounts.set(seenKey, 0);
-          return;
-        }
-
-        // regular message
-        const {
-          fromUserId,
-          toUserId,
-          messageBody,
-          conversationId,
-          senderType,
-        } = data;
-
-        if (!data || !toUserId || !messageBody || !conversationId) {
-          console.warn('Invalid message format:', data);
-          return;
-        }
-
-        const now = new Date().toISOString();
-
-        const messagePayload = {
-          conversationId,
-          senderId: fromUserId,
-          senderType,
-          content: messageBody,
-          createdAt: now,
-        };
-
-        const messageEvent = JSON.stringify({
-          type: 'NEW_MESSAGE',
-          payload: messagePayload,
+        const authenticatedIdentity = identity;
+        void handleClientEvent(socket, authenticatedIdentity, event).catch((error) => {
+          console.error('Unable to handle chat websocket event:', error);
+          send(socket, { type: 'error', payload: { message: 'Chat event failed.' } });
         });
-        const recieverKey =
-          senderType === 'user' ? `seller_${toUserId}` : `user_${toUserId}`;
-        const senderKey =
-          senderType === 'user' ? `user_${fromUserId}` : `seller_${fromUserId}`;
-
-        // Update unseen count dynamically
-        const unseenKey = `${recieverKey}_${conversationId}`;
-        const prevCount = unseenCounts.get(unseenKey) || 0;
-        unseenCounts.set(unseenKey, prevCount + 1);
-
-        // send new message to receiver
-        const recieverSocket = connectedUsers.get(recieverKey);
-        if (recieverSocket && recieverSocket.readyState === WebSocket.OPEN) {
-          recieverSocket.send(messageEvent);
-
-          // also notify unseen count
-          recieverSocket.send(
-            JSON.stringify({
-              type: 'UNSEEN_COUNT_UPDATE',
-              payload: {
-                conversationId,
-                count: prevCount + 1,
-              },
-            }),
-          );
-          console.log(`Delivered message + unseen count to ${recieverKey}`);
-        } else {
-          console.log(`User ${recieverKey} is offline. Message queued`);
-        }
-
-        // echo to sender
-        const senderSocket = connectedUsers.get(senderKey);
-        if (senderSocket && senderSocket.readyState === WebSocket.OPEN) {
-          senderSocket.send(messageEvent);
-          console.log(`Echoed message to sender ${senderKey}`);
-        }
-
-        // push to kafka consumer
-        await producer.send({
-          topic: 'chat.new_message',
-          messages: [
-            {
-              key: conversationId,
-              value: JSON.stringify(messagePayload),
-            },
-          ],
-        });
-
-        console.log(`message queued to kafka: ${conversationId}`);
       } catch (error) {
-        console.log('Error processing Websocket message ', error);
-      }
-    });
-    ws.on('close', async () => {
-      if (registeredUserId) {
-        connectedUsers.delete(registeredUserId);
-        console.log(`Disconnected user ${registeredUserId}`);
-        const isSeller = registeredUserId.startsWith('seller_');
-        const redisKey = isSeller
-          ? `online:seller:${registeredUserId.replace('seller_', '')}`
-          : `online:user:${registeredUserId}`;
-        await redis.del(redisKey);
+        console.error('Invalid chat websocket event:', error);
+        send(socket, { type: 'error', payload: { message: 'Invalid event format.' } });
       }
     });
 
-    ws.on('error', (err) => {
-      console.error('Websocket error: ', err);
+    socket.on('close', () => {
+      if (!identity) return;
+      const currentIdentity = identity;
+      const key = identityKey(currentIdentity);
+      const currentSockets = connectedSockets.get(key);
+      currentSockets?.delete(socket);
+      if (currentSockets?.size) return;
+
+      connectedSockets.delete(key);
+      void redis
+        .del(presenceKey(currentIdentity))
+        .then(() => notifyPresence(currentIdentity, false))
+        .catch((error) => console.error('Unable to clear chat presence:', error));
+    });
+
+    socket.on('error', (error) => {
+      console.error('Chat websocket error:', error);
     });
   });
 }

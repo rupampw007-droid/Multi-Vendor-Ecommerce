@@ -1,10 +1,12 @@
 'use client'
 
-import { ArrowRight, MapPin, Star, Store, Tag } from 'lucide-react'
+import { ArrowRight, MapPin, MessageCircle, Star, Store, Tag } from 'lucide-react'
 import Link from 'next/link'
+import useStartChat from '@/hooks/useStartChat'
 
 export interface ShopCardData {
   id: string
+  sellerId?: string
   name: string
   category: string
   bio?: string | null
@@ -37,6 +39,7 @@ const ShopCard = ({
   shop: ShopCardData
   featured?: boolean
 }) => {
+  const { startChat, isStarting, error } = useStartChat()
   const image = shop.avatars?.[0]?.url ?? shop.avatars?.[0]?.file_url
   const rating =
     Number.isFinite(shop.ratings) && shop.ratings > 0
@@ -103,7 +106,7 @@ const ShopCard = ({
           </p>
         )}
 
-        <div className="mt-auto flex items-center gap-4 pt-5">
+        <div className="mt-auto flex flex-wrap items-center gap-4 pt-5">
           <Link
             href="/products"
             className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:text-blue-800"
@@ -111,6 +114,15 @@ const ShopCard = ({
             Browse products
             <ArrowRight size={15} />
           </Link>
+          <button
+            type="button"
+            onClick={() => void startChat(shop.sellerId ?? shop.id)}
+            disabled={isStarting}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-60"
+          >
+            <MessageCircle size={15} />
+            {isStarting ? 'Opening…' : 'Chat with Seller'}
+          </button>
           {website && (
             <a
               href={website}
@@ -122,6 +134,7 @@ const ShopCard = ({
             </a>
           )}
         </div>
+        {error && <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
     </article>
   )

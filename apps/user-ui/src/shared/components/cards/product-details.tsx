@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
+import useStartChat from '@/hooks/useStartChat'
 import {
   X,
   Star,
@@ -23,6 +24,7 @@ type ProductImage = string | {
 
 interface ProductShop {
   id?: string
+  sellerId?: string
   name?: string
   avatar?: string | ProductImage
   avatars?: ProductImage[]
@@ -135,6 +137,7 @@ export const ProductDetails = ({
   hideFullDetailsLink = false,
   className = '',
 }: ProductDetailsProps) => {
+  const { startChat, isStarting, error: chatError } = useStartChat()
   const [activeImage, setActiveImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [selectedColor, setSelectedColor] = useState<string | null>(
@@ -197,7 +200,11 @@ export const ProductDetails = ({
   const cashOnDelivery = data?.cashOnDelivery ?? data?.cash_on_delivery
 
   const handleChatWithSeller = () => {
-    onChatWithSeller?.(shop)
+    if (onChatWithSeller) {
+      onChatWithSeller(shop)
+      return
+    }
+    void startChat(shop?.sellerId ?? shop?.id)
   }
 
   const handleAddToCart = () => {
@@ -464,11 +471,17 @@ export const ProductDetails = ({
               <button
                 type="button"
                 onClick={handleChatWithSeller}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 transition hover:bg-gray-100"
+                disabled={isStarting}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 transition hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60"
               >
                 <MessageCircle size={16} />
-                Chat to Seller
+                {isStarting ? 'Opening chat…' : 'Chat with Seller'}
               </button>
+              {chatError && (
+                <p role="alert" className="mt-2 text-xs text-red-600">
+                  {chatError}
+                </p>
+              )}
             </div>
           )}
 

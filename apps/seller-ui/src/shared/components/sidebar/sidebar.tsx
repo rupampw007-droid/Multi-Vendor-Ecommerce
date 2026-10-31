@@ -13,6 +13,8 @@ import Home from '@/assets/svgs/icons/home';
 import SidebarMenu from './sidebar.menu';
 import { BellPlus, Headset, ListOrdered, LogOut, Mail, PackageSearch, Settings, SquarePlus, TicketPercent } from 'lucide-react';
 import Payment from '@/assets/svgs/icons/payment';
+import axiosInstance from '@/utils/axiosInstance';
+import { ChatUnreadBadge } from '@repo/components/chat/unread-badge';
 
 const SidebarWrapper = () => {
   const { activeSidebar, setActiveSidebar } = useSidebar();
@@ -121,8 +123,11 @@ const SidebarWrapper = () => {
                 isActive={activeSidebar === '/dashboard/inbox'}
                 title="Inbox"
                 href="/dashboard/inbox"
-                icon={ <Mail
-                   size={20} color={getIconColor('/dashboard/inbox')} />
+                icon={
+                  <span className="relative">
+                    <Mail size={20} color={getIconColor('/dashboard/inbox')} />
+                    {seller && <ChatUnreadBadge role="seller" api={axiosInstance} />}
+                  </span>
                 }
               />
                <SidebarItem

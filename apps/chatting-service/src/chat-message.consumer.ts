@@ -1,7 +1,6 @@
 import { kafka } from "@repo/utils/kafka";
 import prisma from "@repo/lib/prisma/prisma";
-import { Consumer, EachBatchPayload, EachMessagePayload } from "kafkajs";
-import { truncate } from "fs";
+import { Consumer, EachMessagePayload } from "kafkajs";
 import { incrementUnseenCount } from "@repo/lib/redis/message.redis";
 
 
