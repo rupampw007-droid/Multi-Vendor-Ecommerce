@@ -16,7 +16,7 @@ const isAuthenticated = async (req: any, res: Response, next: NextFunction) => {
 
     const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET!) as {
       id: string;
-      role: 'user' | 'seller';
+      role: 'user' | 'seller' | 'admin';
     };
     if (!decoded) {
       return res.status(401).json({
@@ -26,7 +26,7 @@ const isAuthenticated = async (req: any, res: Response, next: NextFunction) => {
 
     let account;
 
-    if (decoded.role === 'user') {
+    if (decoded.role === 'user' || decoded.role === 'admin') {
       account = await prisma.users.findUnique({
         where: {
           id: decoded.id,
@@ -47,6 +47,13 @@ const isAuthenticated = async (req: any, res: Response, next: NextFunction) => {
         message: 'Account not found!',
       });
     }
+    if (
+      'role' in account &&
+      ((decoded.role === 'admin' && account.role !== 'admin') ||
+        (decoded.role === 'user' && account.role === 'admin'))
+    ) {
+      return res.status(403).json({ message: 'Access denied: Account role changed' });
+    }
 
     req.role = decoded.role;
     return next();
@@ -59,5 +66,3 @@ const isAuthenticated = async (req: any, res: Response, next: NextFunction) => {
 };
 
 export default isAuthenticated;
-
-
