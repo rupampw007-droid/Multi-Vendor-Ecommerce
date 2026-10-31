@@ -29,6 +29,15 @@
     },
     {
       "path": "./apps/admin-ui"
+    },
+    {
+      "path": "./apps/chatting-service"
+    },
+    {
+      "path": "./apps/loggers-service"
+    },
+    {
+      "path": "./apps/recommendation-service"
     }
   ]
 }

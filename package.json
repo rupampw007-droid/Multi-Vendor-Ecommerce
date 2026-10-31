@@ -9,7 +9,6 @@
     "user-ui": "npx nx run-many --target=dev --all --projects=user-ui",
     "seller-ui": "npx nx run-many --target=dev --all --projects=seller-ui",
     "admin-ui": "npx nx run-many --target=dev --all --projects=admin-ui"
-
   },
   "private": true,
   "dependencies": {
@@ -56,6 +55,7 @@
     "styled-components": "^6.5.3",
     "swagger-autogen": "^2.23.7",
     "ua-parser-js": "^2.0.10",
+    "ws": "^8.22.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
