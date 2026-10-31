@@ -7,6 +7,7 @@ import {
   refreshToken,
   createShop,
   loginUser,
+  loginAdmin,
   logoutUser,
   registerSeller,
   resetUserPassword,
@@ -32,6 +33,7 @@ export const router: Router = express.Router();
 router.post('/user-registration', userRegestration);
 router.post('/verify-user', verifyUser);
 router.post('/login-user', loginUser);
+router.post('/login-admin', loginAdmin);
 router.post('/refresh-token', refreshToken);
 router.get('/logged-in-user', isAuthenticated, getUser);
 router.patch('/user-profile', isAuthenticated, updateUserProfile);

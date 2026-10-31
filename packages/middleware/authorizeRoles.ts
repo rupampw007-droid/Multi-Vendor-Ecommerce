@@ -14,3 +14,10 @@ export const isUser = (req: any, res: Response, next: NextFunction) => {
     }
     next()
 }
+
+export const isAdmin = (req: any, res: Response, next: NextFunction) => {
+    if(req.role !== 'admin') {
+        return next(new AuthError('Access denied: Admin only'))
+    }
+    next()
+}

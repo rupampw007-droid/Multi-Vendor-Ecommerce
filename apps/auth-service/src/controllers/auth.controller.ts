@@ -111,6 +111,9 @@ export const loginUser = async (
     if (!user) {
       throw new AuthError("User doesn't exist");
     }
+    if (user.role === 'admin') {
+      throw new AuthError('Use the administrator sign-in page');
+    }
     //verify password
     const isMatch = await bcrypt.compare(password, user.password!);
     if (!isMatch) {
@@ -340,7 +343,7 @@ export const refreshToken = async (
     const requestedRole = req.body?.role;
     if (
       requestedRole !== undefined &&
-      !['user', 'seller'].includes(requestedRole)
+      !['user', 'seller', 'admin'].includes(requestedRole)
     ) {
       throw new JsonWebTokenError('Forbidden! Invalid account role');
     }
@@ -363,14 +366,14 @@ export const refreshToken = async (
 
     if (
       !decoded.id ||
-      !['user', 'seller'].includes(decoded.role) ||
+      !['user', 'seller', 'admin'].includes(decoded.role) ||
       (requestedRole !== undefined && decoded.role !== requestedRole)
     ) {
       throw new JsonWebTokenError('Forbidden! Invalid refresh token');
     }
 
     let account;
-    if (decoded.role === 'user') {
+    if (decoded.role === 'user' || decoded.role === 'admin') {
       account = await prisma.users.findUnique({
         where: { id: decoded.id },
       });
@@ -382,6 +385,13 @@ export const refreshToken = async (
 
     if (!account) {
       throw new AuthError('Forbidden! User/Seller not found');
+    }
+    if (
+      'role' in account &&
+      ((decoded.role === 'admin' && account.role !== 'admin') ||
+        (decoded.role === 'user' && account.role === 'admin'))
+    ) {
+      throw new AuthError('Forbidden! Account role has changed');
     }
 
     const newAccessToken = jwt.sign(
@@ -395,7 +405,7 @@ export const refreshToken = async (
       },
     );
 
-    if (decoded.role === 'user') {
+    if (decoded.role === 'user' || decoded.role === 'admin') {
       setCookie(res, 'access_token', newAccessToken);
     } else {
       setCookie(res, 'seller-access-token', newAccessToken);
@@ -1145,6 +1155,54 @@ export const deleteUserAddress = async (
     return res.status(200).json({
       success: true,
       message: 'Address deleted successfully',
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// login admin
+export const loginAdmin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    const password = req.body?.password;
+
+    if (!email || typeof password !== 'string' || !password) {
+      throw new ValidationError('Email and password are required');
+    }
+    const user = await prisma.users.findUnique({ where: { email } });
+
+    if (!user || user.role !== 'admin' || !user.password) {
+      throw new AuthError('Invalid email or password');
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      throw new AuthError('Invalid email or password');
+    }
+
+    res.clearCookie('seller-access-token');
+    res.clearCookie('seller-refresh-token');
+    const accessToken = jwt.sign(
+      { id: user.id, role: 'admin' },
+      process.env.ACCESS_TOKEN_SECRET as string,
+      { expiresIn: '15m' },
+    );
+    const refreshToken = jwt.sign(
+      { id: user.id, role: 'admin' },
+      process.env.REFRESH_TOKEN_SECRET as string,
+      { expiresIn: '7d' },
+    );
+    setCookie(res, 'refresh_token', refreshToken);
+    setCookie(res, 'access_token', accessToken);
+
+    return res.status(200).json({
+      success: true,
+      admin: { id: user.id, name: user.name, email: user.email, role: user.role },
     });
   } catch (error) {
     return next(error);

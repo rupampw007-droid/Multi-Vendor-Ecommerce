@@ -100,156 +100,6 @@ const getPaymentSession = async (
   return rawSession ? (JSON.parse(rawSession) as PaymentSession) : null;
 };
 
-const normalizeCouponCode = (coupon?: string | null): string =>
-  coupon?.trim().toUpperCase() ?? '';
-
-const DEFAULT_COUPONS: Record<
-  string,
-  { discountType: 'percent' | 'flat'; discountValue: number }
-> = {
-  SAVE10: { discountType: 'percent', discountValue: 10 },
-  FLAT100: { discountType: 'flat', discountValue: 100 },
-};
-
-type CouponConfig = {
-  code: string;
-  discountType: 'percent' | 'flat';
-  discountValue: number;
-};
-
-const parseCouponType = (
-  discountType?: string | null,
-): 'percent' | 'flat' | null => {
-  const normalizedType = discountType?.trim().toLowerCase();
-
-  if (!normalizedType) {
-    return null;
-  }
-
-  if (normalizedType.includes('percent')) {
-    return 'percent';
-  }
-
-  if (
-    normalizedType.includes('flat') ||
-    normalizedType.includes('fixed') ||
-    normalizedType.includes('amount')
-  ) {
-    return 'flat';
-  }
-
-  return null;
-};
-
-const calculateCouponDiscount = (
-  subtotalAmount: number,
-  coupon: CouponConfig,
-): number => {
-  if (!Number.isFinite(subtotalAmount) || subtotalAmount <= 0) {
-    return 0;
-  }
-
-  const discountValue = Number(coupon.discountValue);
-  if (!Number.isFinite(discountValue) || discountValue <= 0) {
-    return 0;
-  }
-
-  const discountAmount =
-    coupon.discountType === 'percent'
-      ? Math.min(Math.round(subtotalAmount * (discountValue / 100)), subtotalAmount)
-      : Math.min(discountValue, subtotalAmount);
-
-  return Math.max(0, discountAmount);
-};
-
-const getCouponConfig = async (
-  code: string,
-): Promise<CouponConfig | null> => {
-  const normalizedCoupon = normalizeCouponCode(code);
-  if (!normalizedCoupon) {
-    return null;
-  }
-
-  const defaultCoupon = DEFAULT_COUPONS[normalizedCoupon];
-  if (defaultCoupon) {
-    return {
-      code: normalizedCoupon,
-      discountType: defaultCoupon.discountType,
-      discountValue: defaultCoupon.discountValue,
-    };
-  }
-
-  const storedCoupon = await prisma.discount_codes.findUnique({
-    where: {
-      discountCode: normalizedCoupon,
-    },
-    select: {
-      discountCode: true,
-      discountType: true,
-      discountValue: true,
-    },
-  });
-
-  if (!storedCoupon) {
-    return null;
-  }
-
-  const discountType = parseCouponType(storedCoupon.discountType);
-  const discountValue = Number(storedCoupon.discountValue);
-
-  if (!discountType || !Number.isFinite(discountValue) || discountValue <= 0) {
-    return null;
-  }
-
-  return {
-    code: normalizeCouponCode(storedCoupon.discountCode),
-    discountType,
-    discountValue,
-  };
-};
-
-export const verifyCouponCode = async (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const { coupon, subtotal } = req.body as {
-      coupon?: string | null;
-      subtotal?: number | null;
-    };
-    const normalizedCoupon = normalizeCouponCode(coupon);
-
-    if (!normalizedCoupon) {
-      throw new ValidationError('A coupon code is required');
-    }
-
-    const couponConfig = await getCouponConfig(normalizedCoupon);
-    if (!couponConfig) {
-      throw new ValidationError('Coupon code is invalid');
-    }
-
-    const validatedSubtotal =
-      typeof subtotal === 'number' && Number.isFinite(subtotal) ? subtotal : 0;
-    const discountAmount = calculateCouponDiscount(
-      validatedSubtotal,
-      couponConfig,
-    );
-
-    return res.status(200).json({
-      valid: true,
-      coupon: {
-        code: couponConfig.code,
-        discountType: couponConfig.discountType,
-        discountValue: couponConfig.discountValue,
-        discountAmount,
-      },
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
-
 export const createPaymentIntent = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -401,7 +251,9 @@ export const createPaymentSession = async (
       throw new ValidationError('One or more products are unavailable');
     }
 
-    const productById = new Map(products.map((product) => [product.id, product]));
+    const productById = new Map(
+      products.map((product) => [product.id, product]),
+    );
     const normalizedCart = cart.map((item) => {
       const product = productById.get(item.id);
       if (!product || product.stock < item.quantity) {
@@ -466,15 +318,16 @@ export const createPaymentSession = async (
     if (!Number.isFinite(subtotalAmount) || subtotalAmount <= 0) {
       throw new ValidationError('Order total is not a valid payment amount');
     }
-    const normalizedCoupon = normalizeCouponCode(coupon);
-    const couponConfig =
-      normalizedCoupon && (await getCouponConfig(normalizedCoupon));
-    if (normalizedCoupon && !couponConfig) {
+    const normalizedCoupon = coupon?.trim().toUpperCase();
+    if (normalizedCoupon && !['SAVE10', 'FLAT100'].includes(normalizedCoupon)) {
       throw new ValidationError('Coupon code is invalid');
     }
-    const discountAmount = couponConfig
-      ? calculateCouponDiscount(subtotalAmount, couponConfig)
-      : 0;
+    const discountAmount =
+      normalizedCoupon === 'SAVE10'
+        ? Math.min(Math.round(subtotalAmount * 0.1), subtotalAmount)
+        : normalizedCoupon === 'FLAT100'
+          ? Math.min(100, subtotalAmount)
+          : 0;
     const subtotalInMinorUnits = Math.round(subtotalAmount * 100);
     const totalInMinorUnits =
       subtotalInMinorUnits - Math.round(discountAmount * 100);
@@ -535,7 +388,8 @@ export const createOrder = async (
   try {
     event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Invalid signature';
+    const message =
+      error instanceof Error ? error.message : 'Invalid signature';
     return res.status(400).send(`Webhook error: ${message}`);
   }
 
@@ -561,10 +415,14 @@ export const createOrder = async (
     const sessionKey = `payment-session:${sessionId}`;
     const session = await getPaymentSession(sessionId);
     if (!session) {
-      return res.status(200).send('Payment session expired; order was not processed');
+      return res
+        .status(200)
+        .send('Payment session expired; order was not processed');
     }
     if (session.userId !== userId) {
-      throw new ValidationError('Payment intent does not match the order owner');
+      throw new ValidationError(
+        'Payment intent does not match the order owner',
+      );
     }
 
     const transferGroup = paymentIntent.transfer_group ?? sessionId;
@@ -602,16 +460,9 @@ export const createOrder = async (
           userId,
           shopIds: [...new Set(session.cart.map((item) => item.shopId))],
           fulfillments: {
-            create: session.sellers.map((seller) => ({
-              shopId: seller.shopId,
-              subtotal: session.cart
-                .filter((item) => item.shopId === seller.shopId)
-                .reduce(
-                  (subtotal, item) =>
-                    subtotal + item.quantity * item.sale_price,
-                  0,
-                ),
-              totalAmount: seller.totalAmount,
+            create: [...new Set(session.cart.map((item) => item.shopId))].map(
+              (shopId) => ({
+                shopId,
                 statusHistory: [
                   {
                     status: 'PAID',
@@ -619,7 +470,8 @@ export const createOrder = async (
                     updatedBy: 'system',
                   },
                 ],
-            })),
+              }),
+            ),
           },
           items: session.cart,
           shippingAddress: address
@@ -729,7 +581,6 @@ export const createOrder = async (
   }
 };
 
-
 // get seller orders
 export const getSellerOrders = async (
   req: SellerAuthenticatedRequest,
@@ -801,6 +652,7 @@ const fulfillmentStatuses = [
   'SHIPPED',
   'OUT_FOR_DELIVERY',
   'DELIVERED',
+  'CANCELLED',
 ] as const;
 type FulfillmentStatus = (typeof fulfillmentStatuses)[number];
 
@@ -808,11 +660,12 @@ const allowedFulfillmentTransitions: Record<
   FulfillmentStatus,
   FulfillmentStatus[]
 > = {
-  PAID: ['PROCESSING'],
-  PROCESSING: ['SHIPPED'],
+  PAID: ['PROCESSING', 'CANCELLED'],
+  PROCESSING: ['SHIPPED', 'CANCELLED'],
   SHIPPED: ['OUT_FOR_DELIVERY'],
   OUT_FOR_DELIVERY: ['DELIVERED'],
   DELIVERED: [],
+  CANCELLED: [],
 };
 
 const getSellerShop = async (sellerId: string | undefined) => {
@@ -950,26 +803,10 @@ export const updateSellerOrderFulfillment = async (
         `Cannot change fulfillment from ${currentStatus} to ${nextStatus}`,
       );
     }
-    const effectiveTrackingNumber =
-      trackingNumber === undefined
-        ? currentFulfillment?.trackingNumber
-        : typeof trackingNumber === 'string'
-          ? trackingNumber.trim()
-          : null;
-    if (
-      ['SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(nextStatus) &&
-      !effectiveTrackingNumber
-    ) {
-      throw new ValidationError(
-        'Add a tracking number before marking the order as shipped',
-      );
-    }
 
     const now = new Date();
-    const statusHistory: Prisma.InputJsonValue[] =
-      currentFulfillment?.statusHistory.flatMap((entry) =>
-        entry === null ? [] : [entry],
-      ) ?? [];
+    const statusHistory =
+      (currentFulfillment?.statusHistory as Prisma.JsonArray | undefined) ?? [];
     const updatedHistory =
       nextStatus === currentStatus
         ? statusHistory
@@ -1057,9 +894,7 @@ export const getOrderDetails = async (
     const orderItems = Array.isArray(order.items)
       ? order.items.filter(
           (item): item is Prisma.JsonObject =>
-            item !== null &&
-            typeof item === 'object' &&
-            !Array.isArray(item),
+            item !== null && typeof item === 'object' && !Array.isArray(item),
         )
       : [];
     const productIds = [
@@ -1093,7 +928,7 @@ export const getOrderDetails = async (
           !Array.isArray(selectedOptions)
             ? selectedOptions
             : {},
-        product: productId ? productMap.get(productId) ?? null : null,
+        product: productId ? (productMap.get(productId) ?? null) : null,
       };
     });
 
@@ -1110,39 +945,154 @@ export const getOrderDetails = async (
   }
 };
 
-export const getUserOrders = async (
-  req: AuthenticatedRequest,
+// verify coupon code
+export const verifyCouponCode = async (
+  req: any,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new ValidationError('Customer authentication is required');
+    const { couponCode, cart } = req.body;
+
+    if (!couponCode || !cart || cart.length === 0) {
+      return next(new ValidationError('Coupon code and cart are required!'));
     }
 
+    // Fetch the discount code
+    const discount = await prisma.discount_codes.findUnique({
+      where: { discountCode: couponCode },
+    });
+
+    if (!discount) {
+      return next(new ValidationError("Coupon code isn't valid!"));
+    }
+    // Find matching product that inclides this discount code
+    const matchingProduct = cart.find((item: any) =>
+      item.discount_codes?.some((d: any) => d === discount.id),
+    );
+
+    if (!matchingProduct) {
+      return res.status(200).json({
+        valid: false,
+        discount: 0,
+        discountAmount: 0,
+        message: 'No matching product found in cart for this coupon',
+      });
+    }
+
+    let discountAmount = 0;
+    const price = matchingProduct.sale_price * matchingProduct.quantity;
+
+    if (discount.discountType === 'percentage') {
+      discountAmount = (price * discount.discountValue) / 100;
+    } else if (discount.discountType === 'flat') {
+      discountAmount = discount.discountValue;
+    }
+
+    // Prevent discount from being greater than total price
+    discountAmount = Math.min(discountAmount, price);
+
+    res.status(200).json({
+      valid: true,
+      discount: discount.discountValue,
+      discountAmount: discountAmount.toFixed(2),
+      discountProductId: matchingProduct.id,
+      discountType: discount.discountType,
+      message: 'Discount applied to 1 eligible product',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// get user orders
+export const getUserOrders = async (
+  req: any,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
     const orders = await prisma.orders.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      select: {
-        id: true,
-        createdAt: true,
-        subtotal: true,
-        totalAmount: true,
-        currency: true,
-        status: true,
-        fulfillments: {
-          select: {
-            status: true,
-          },
-        },
+      where: {
+        userId: req.user.id,
+      },
+      include: {
         items: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
 
-    return res.status(200).json({ success: true, orders });
+    res.status(201).json({
+      success: true,
+      orders,
+    });
   } catch (error) {
-    return next(error);
+    next(error);
   }
 };
+
+// get admin orders
+export const getAdminOrders = async(req: any, res: Response, next: NextFunction) => {
+  try {
+    const parsedPage = Number.parseInt(String(req.query.page ?? '1'), 10);
+    const parsedPageSize = Number.parseInt(
+      String(req.query.pageSize ?? req.query.limit ?? '20'),
+      10,
+    );
+    const page = Number.isFinite(parsedPage) ? Math.max(1, parsedPage) : 1;
+    const pageSize = Number.isFinite(parsedPageSize)
+      ? Math.min(100, Math.max(1, parsedPageSize))
+      : 20;
+    const search = String(req.query.search ?? '').trim();
+    const status = String(req.query.status ?? '');
+    const where: Prisma.ordersWhereInput = {
+      ...(search
+        ? {
+          OR: [
+            { paymentIntentId: { contains: search, mode: 'insensitive' } },
+            { user: { is: { name: { contains: search, mode: 'insensitive' } } } },
+            { user: { is: { email: { contains: search, mode: 'insensitive' } } } },
+          ],
+        }
+        : {}),
+      ...(status ? { status } : {}),
+    };
+    const requestedSort = String(req.query.sortBy ?? 'date');
+    const sortField =
+      requestedSort === 'total' || requestedSort === 'status'
+        ? requestedSort === 'total'
+          ? 'totalAmount'
+          : 'status'
+        : 'createdAt';
+    const sortDirection = req.query.sortDirection === 'asc' ? 'asc' : 'desc';
+    const [orders, total] = await Promise.all([
+      prisma.orders.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy: { [sortField]: sortDirection } as Prisma.ordersOrderByWithRelationInput,
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          fulfillments: {
+            include: { shop: { select: { id: true, name: true } } },
+          },
+        },
+      }),
+      prisma.orders.count({ where }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: orders,
+      meta: {
+        total,
+        currentPage: page,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    });
+  } catch (error) {
+    next(error)
+  }
+}
