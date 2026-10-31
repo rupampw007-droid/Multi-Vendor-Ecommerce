@@ -2,12 +2,14 @@
 import { CartIcon } from '@/assets/svgs/cart-icon';
 import { HeartIcon } from '@/assets/svgs/heart-icon';
 import ProfileIcon from '@/assets/svgs/profie-icon';
-import { Search } from 'lucide-react';
+import { MessageCircle, Search } from 'lucide-react';
 import Link from 'next/link';
 import React from 'react';
 import HeaderBottom from './header-bottom';
 import useUser from '@/hooks/useUser';
 import { useStore } from '@/store';
+import axiosInstance from '@/utils/axiosInstance';
+import { ChatUnreadBadge } from '@repo/components/chat/unread-badge';
 
 const Header = () => {
   const { user, isLoading } = useUser();
@@ -61,6 +63,16 @@ const Header = () => {
                 <span className="block font-medium text-sm">Hello,</span>
                 <span className="block font-semibold text-sm">Sign In</span>
               </div>
+            </Link>
+          )}
+          {user && (
+            <Link
+              href="/inbox"
+              aria-label="Inbox"
+              className="relative rounded-full p-2 text-slate-700 hover:bg-slate-100"
+            >
+              <MessageCircle size={23} />
+              <ChatUnreadBadge role="user" api={axiosInstance} />
             </Link>
           )}
           <Link href={'/wishlist'} className="relative">
