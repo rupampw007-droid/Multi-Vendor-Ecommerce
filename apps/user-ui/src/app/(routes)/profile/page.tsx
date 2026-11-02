@@ -8,6 +8,7 @@ import useUser from '@/hooks/useUser'
 import axiosInstance from '@/utils/axiosInstance'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ArrowUpRight,
   Bell,
   Check,
   ChevronRight,
@@ -22,10 +23,12 @@ import {
   Pencil,
   Shield,
   Star,
+  Truck,
   UserRound,
   X,
 } from 'lucide-react'
 import { Suspense, useEffect, useState, type FormEvent } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 const accountSections = [
@@ -64,7 +67,12 @@ interface UserOrder {
   totalAmount: number
   currency: string
   status: string
-  fulfillments: Array<{ status: string }>
+  fulfillments: Array<{
+    status: string
+    trackingNumber?: string | null
+    carrier?: string | null
+    estimatedDelivery?: string | null
+  }>
   items: unknown
 }
 
@@ -421,7 +429,7 @@ const ProfileContent = () => {
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[640px] divide-y divide-gray-100 text-left text-sm">
+                    <table className="w-full min-w-[760px] divide-y divide-gray-100 text-left text-sm">
                       <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                         <tr>
                           <th scope="col" className="px-5 py-3 font-semibold sm:px-7">
@@ -438,6 +446,9 @@ const ProfileContent = () => {
                           </th>
                           <th scope="col" className="px-5 py-3 font-semibold">
                             Status
+                          </th>
+                          <th scope="col" className="px-5 py-3 font-semibold">
+                            Action
                           </th>
                         </tr>
                       </thead>
@@ -480,6 +491,16 @@ const ProfileContent = () => {
                                 >
                                   {status}
                                 </span>
+                              </td>
+                              <td className="px-5 py-4">
+                                <Link
+                                  href={`/order/${encodeURIComponent(order.id)}`}
+                                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50"
+                                >
+                                  <Truck size={14} />
+                                  Track order
+                                  <ArrowUpRight size={13} />
+                                </Link>
                               </td>
                             </tr>
                           )
