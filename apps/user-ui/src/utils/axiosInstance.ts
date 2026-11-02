@@ -18,6 +18,7 @@ const authenticatedPaths = [
   '/api/user-addresses',
   '/api/logout-user',
   '/order/api/get-user-orders',
+  '/order/api/get-order-details/',
   '/order/api/create-payment-session',
   '/order/api/create-payment-intent',
   '/order/api/verify-payment-session',

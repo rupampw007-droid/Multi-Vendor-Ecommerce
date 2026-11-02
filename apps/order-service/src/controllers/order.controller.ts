@@ -885,6 +885,13 @@ export const getOrderDetails = async (
 
     const order = await prisma.orders.findUnique({
       where: { id: orderId, userId },
+      include: {
+        fulfillments: {
+          include: {
+            shop: { select: { id: true, name: true } },
+          },
+        },
+      },
     });
 
     if (!order) {
@@ -1017,7 +1024,11 @@ export const getUserOrders = async (
         userId: req.user.id,
       },
       include: {
-        items: true,
+        fulfillments: {
+          include: {
+            shop: { select: { id: true, name: true } },
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
