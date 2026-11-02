@@ -108,10 +108,10 @@ const ShopCard = ({
 
         <div className="mt-auto flex flex-wrap items-center gap-4 pt-5">
           <Link
-            href="/products"
+            href={`/shop/${encodeURIComponent(shop.id)}`}
             className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:text-blue-800"
           >
-            Browse products
+            View shop
             <ArrowRight size={15} />
           </Link>
           <button

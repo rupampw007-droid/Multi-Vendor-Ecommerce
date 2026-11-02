@@ -5,16 +5,15 @@ import { kafka } from '@repo/utils/kafka'
 const producer = kafka.producer();
 
 export async function sendKafkaEvent(eventData : {
-    userId? : string;
+    userId? : string | null;
     productId? : string
     shopId?: string
     action: string
     device?:  string
     country?: string
     city? : string
-}) {
+}): Promise<boolean> {
     try {
-        console.log(!!process.env.KAFKA_API_KEY, !!process.env.KAFKA_API_SECRET)
         await producer.connect();
         await producer.send({
             topic: "user-events",
@@ -22,9 +21,15 @@ export async function sendKafkaEvent(eventData : {
                 value: JSON.stringify(eventData)
             }]
         })
+        return true
     } catch (error) {
-        console.log(error)
+        console.error('Failed to send analytics event to Kafka:', error)
+        return false
     } finally {
-        await producer.disconnect()
+        try {
+            await producer.disconnect()
+        } catch (error) {
+            console.error('Failed to disconnect the Kafka producer:', error)
+        }
     }
 }

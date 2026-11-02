@@ -12,8 +12,8 @@ const axiosInstance = axios.create({
 let refreshPromise: Promise<void> | null = null;
 
 const authenticatedPaths = [
-  '/api/logged-in-user',
   '/api/user-profile',
+  '/api/follow-shop/',
   '/api/change-password-user',
   '/api/user-addresses',
   '/api/logout-user',

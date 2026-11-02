@@ -158,7 +158,8 @@ model shops {
   sellers sellers @relation(fields: [sellerId], references: [id])
   createdAt DateTime  @default(now())
   updatedAt  DateTime   @updatedAt
-    productAnalytics ProductAnalytics[]
+  productAnalytics ProductAnalytics[]
+  shopAnalytics    ShopAnalytics[]
 }
 model sellers {
   id      String      @id @default(auto()) @map("_id") @db.ObjectId
@@ -273,6 +274,21 @@ model ProductAnalytics {
   shop    shops?   @relation(fields: [shopId], references: [id])
 
   @@index([shopId])
+}
+
+model ShopAnalytics {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String?  @db.ObjectId
+  shopId    String   @db.ObjectId
+  action    String
+  country   String?
+  city      String?
+  device    String?
+  createdAt DateTime @default(now())
+  shop      shops    @relation(fields: [shopId], references: [id])
+
+  @@index([shopId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model conversationGroup {

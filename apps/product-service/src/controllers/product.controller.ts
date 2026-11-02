@@ -964,6 +964,74 @@ export const getFilteredShops = async (
   }
 };
 
+export const getShopDetails = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const shopId = req.params.id;
+    if (!/^[a-f\d]{24}$/i.test(shopId)) {
+      throw new ValidationError('A valid shop ID is required');
+    }
+
+    const shop = await prisma.shops.findUnique({
+      where: { id: shopId },
+      include: {
+        avatars: true,
+        reviews: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                avatars: { select: { url: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        products: {
+          where: {
+            status: 'Active',
+            OR: [{ isDeleted: false }, { isDeleted: null }],
+          },
+          include: {
+            images: true,
+            Shop: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!shop) {
+      return next(new NotFoundError('Shop not found'));
+    }
+
+    const followerCount = await prisma.users.count({
+      where: { following: { has: shopId } },
+    });
+    const averageRating =
+      shop.reviews.length > 0
+        ? shop.reviews.reduce((total, review) => total + review.rating, 0) /
+          shop.reviews.length
+        : shop.ratings;
+
+    return res.status(200).json({
+      success: true,
+      shop: {
+        ...shop,
+        followerCount,
+        averageRating,
+        reviewCount: shop.reviews.length,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 // Get the highest-rated shops
 export const topShops = async (
   req: Request,
