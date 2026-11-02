@@ -1,4 +1,5 @@
 import { ValidationError } from '@repo/error-handler';
+import { imagekit } from '@repo/lib/imagekit';
 import prisma from '@repo/lib/prisma/prisma';
 import redis from '@repo/lib/redis';
 import { clearUnseenCount, incrementUnseenCount } from '@repo/lib/redis/message.redis';
@@ -16,7 +17,77 @@ type ChatRequest = Request & {
     conversationId?: unknown;
     clientTempId?: unknown;
     content?: unknown;
+    fileData?: unknown;
+    fileName?: unknown;
+    mimeType?: unknown;
+    size?: unknown;
+    attachments?: unknown;
   };
+};
+
+type ChatAttachment = {
+  url: string;
+  name: string;
+  mimeType: string;
+  size: number;
+};
+
+const allowedAttachmentTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+const maximumAttachmentSize = 5 * 1024 * 1024;
+const maximumAttachmentsPerMessage = 5;
+
+const parseAttachments = (value: unknown): ChatAttachment[] | null => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > maximumAttachmentsPerMessage) {
+    return null;
+  }
+  const attachments: ChatAttachment[] = [];
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object') return null;
+    const item = candidate as Record<string, unknown>;
+    if (
+      typeof item.url !== 'string' ||
+      typeof item.name !== 'string' ||
+      typeof item.mimeType !== 'string' ||
+      typeof item.size !== 'number'
+    ) {
+      return null;
+    }
+    let url: URL;
+    try {
+      url = new URL(item.url);
+    } catch {
+      return null;
+    }
+    if (
+      url.protocol !== 'https:' ||
+      !url.hostname.endsWith('.imagekit.io') ||
+      !allowedAttachmentTypes.has(item.mimeType) ||
+      !Number.isInteger(item.size) ||
+      item.size < 1 ||
+      item.size > maximumAttachmentSize ||
+      item.name.length > 255
+    ) {
+      return null;
+    }
+    attachments.push({
+      url: url.toString(),
+      name: item.name,
+      mimeType: item.mimeType,
+      size: item.size,
+    });
+  }
+  return attachments;
 };
 
 const presenceKey = (role: ChatRole, id: string) => `online:${role}:${id}`;
@@ -224,7 +295,10 @@ const listConversations = async (role: ChatRole, id: string) => {
       conversationId: conversation.id,
       ...(role === 'user' ? { seller: otherParty } : { user: otherParty }),
       lastMessage:
-        lastMessage?.content ?? 'Say something to start the conversation',
+        lastMessage?.content ??
+        (lastMessage?.attatchments?.length
+          ? `📎 ${lastMessage.attatchments.length} file${lastMessage.attatchments.length === 1 ? '' : 's'}`
+          : 'Say something to start the conversation'),
       lastMessageAt: lastMessage?.createdAt ?? conversation.updatedAt,
       unreadCount: unreadByConversation.get(conversation.id) ?? 0,
     };
@@ -391,6 +465,81 @@ export const fetchSellerMessages = (
   next: NextFunction,
 ) => fetchConversationMessages(req, res, next, 'seller');
 
+export const uploadChatAttachment = async (
+  req: ChatRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const requester = getRequester(req);
+    if (!requester) return res.status(403).json({ message: 'Access denied.' });
+    const {
+      conversationId,
+      fileData,
+      fileName,
+      mimeType,
+      size,
+    } = req.body ?? {};
+    if (
+      typeof conversationId !== 'string' ||
+      typeof fileData !== 'string' ||
+      typeof fileName !== 'string' ||
+      typeof mimeType !== 'string' ||
+      typeof size !== 'number' ||
+      !allowedAttachmentTypes.has(mimeType) ||
+      !Number.isInteger(size) ||
+      size < 1 ||
+      size > maximumAttachmentSize ||
+      fileName.length > 255
+    ) {
+      return res.status(400).json({
+        message: 'Choose a supported file no larger than 5 MB.',
+      });
+    }
+
+    const participant = await prisma.participant.findFirst({
+      where: conversationParticipantWhere(conversationId, requester),
+      select: { id: true },
+    });
+    if (!participant) {
+      return res.status(403).json({
+        message: 'You are not a participant in this conversation.',
+      });
+    }
+
+    const dataUriMatch = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([a-z0-9+/]+=*)$/i.exec(
+      fileData,
+    );
+    if (!dataUriMatch || dataUriMatch[1].toLowerCase() !== mimeType) {
+      return res.status(400).json({ message: 'Invalid file data.' });
+    }
+    const decodedSize = Buffer.from(dataUriMatch[2], 'base64').length;
+    if (decodedSize !== size || decodedSize > maximumAttachmentSize) {
+      return res.status(400).json({ message: 'File size does not match the upload.' });
+    }
+
+    const safeName = fileName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 255);
+    const uploaded = await imagekit.files.upload({
+      file: fileData,
+      fileName: `${Date.now()}-${safeName}`,
+      folder: '/chat',
+      useUniqueFileName: true,
+    });
+    if (!uploaded.url) {
+      throw new Error('Chat attachment upload did not return a URL.');
+    }
+    const attachment: ChatAttachment = {
+      url: uploaded.url,
+      name: safeName,
+      mimeType,
+      size: decodedSize,
+    };
+    return res.status(201).json({ attachment });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 export const sendMessage = async (
   req: ChatRequest,
   res: Response,
@@ -403,14 +552,18 @@ export const sendMessage = async (
     const { conversationId, clientTempId } = req.body ?? {};
     const content =
       typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+    const attachments = parseAttachments(req.body?.attachments);
     if (
       typeof conversationId !== 'string' ||
       !conversationId ||
-      !content ||
-      content.length > 5000
+      (!content && attachments?.length === 0) ||
+      content.length > 5000 ||
+      attachments === null
     ) {
       return next(
-        new ValidationError('A conversation and a message of 1-5000 characters are required.'),
+        new ValidationError(
+          'Provide a message of up to 5000 characters and no more than 5 valid attachments.',
+        ),
       );
     }
 
@@ -436,8 +589,8 @@ export const sendMessage = async (
         conversationId,
         senderId: requester.id,
         senderType: requester.role,
-        content,
-        attatchments: [],
+        content: content || null,
+        attatchments: attachments.map((attachment) => JSON.stringify(attachment)),
         status: 'sent',
       },
     });

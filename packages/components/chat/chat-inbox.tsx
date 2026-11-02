@@ -6,13 +6,14 @@ import {
   ArrowLeft,
   Check,
   CheckCheck,
+  FileText,
+  Lock,
   LoaderCircle,
   MessageCircle,
-  Moon,
+  Paperclip,
   Search,
   Send,
   Smile,
-  Sun,
   X,
 } from 'lucide-react';
 import {
@@ -48,10 +49,19 @@ type ChatMessage = {
   senderId: string;
   senderType: ChatRole;
   content: string | null;
+  attatchments?: string[];
   status: 'sent' | 'delivered' | 'seen' | string;
   createdAt: string;
   clientTempId?: string;
   localStatus?: 'sending' | 'failed';
+  localFiles?: File[];
+};
+
+type ChatAttachment = {
+  url: string;
+  name: string;
+  mimeType: string;
+  size: number;
 };
 
 type ApiMessagePage = {
@@ -98,6 +108,42 @@ type ChatSocketEvent =
   | { type: 'ready'; payload: { role: ChatRole; id: string } }
   | { type: 'error'; payload: { message: string } };
 
+/* ------------------------------------------------------------------ */
+/* WhatsApp Web light palette                                          */
+/* ------------------------------------------------------------------ */
+const C = {
+  panelHeader: 'bg-[#f0f2f5]',
+  chatBg: 'bg-[#efeae2]',
+  outgoing: '#d9fdd3',
+  textPrimary: 'text-[#111b21]',
+  textSecondary: 'text-[#667781]',
+  icon: 'text-[#54656f]',
+  green: 'bg-[#00a884]',
+  greenHover: 'hover:bg-[#008f6f]',
+  greenText: 'text-[#00a884]',
+  divider: 'border-[#e9edef]',
+};
+
+const AVATAR_COLORS = [
+  '#00a884',
+  '#53bdeb',
+  '#e26ab6',
+  '#f5a623',
+  '#7f66ff',
+  '#ff7a59',
+  '#5b9aa0',
+  '#8e6e53',
+];
+
+const colorForName = (name: string) => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+};
+
+const scrollbar =
+  '[scrollbar-width:thin] [scrollbar-color:#c5ccd0_transparent]';
+
 const conversationsPath = (role: ChatRole) =>
   role === 'user'
     ? '/chatting/api/get-user-conversation'
@@ -110,17 +156,41 @@ const formatTime = (date: string) =>
     new Date(date),
   );
 
+const formatListTime = (date: string) => {
+  const value = new Date(date);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const same = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  if (same(value, today)) return formatTime(date);
+  if (same(value, yesterday)) return 'Yesterday';
+  return new Intl.DateTimeFormat(undefined, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(value);
+};
+
+const setLastMessagePreview = (message: ChatMessage) =>
+  message.content ||
+  (message.attatchments?.length
+    ? `📎 ${message.attatchments.length} file${message.attatchments.length === 1 ? '' : 's'}`
+    : '');
+
 const dayLabel = (date: string) => {
   const value = new Date(date);
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-  const sameDay = (a: Date, b: Date) =>
+  const sameDayFn = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
-  if (sameDay(value, today)) return 'Today';
-  if (sameDay(value, yesterday)) return 'Yesterday';
+  if (sameDayFn(value, today)) return 'Today';
+  if (sameDayFn(value, yesterday)) return 'Yesterday';
   return new Intl.DateTimeFormat(undefined, {
     weekday: 'long',
     month: 'long',
@@ -175,6 +245,25 @@ const mergeServerMessage = (
   return uniqueMessages([...withoutTemp.filter((entry) => entry.id !== message.id), message]);
 };
 
+const getMessageAttachments = (message: ChatMessage): ChatAttachment[] =>
+  (message.attatchments ?? []).flatMap((rawAttachment) => {
+    try {
+      const attachment = JSON.parse(rawAttachment) as ChatAttachment;
+      return attachment.url && attachment.name ? [attachment] : [];
+    } catch {
+      return rawAttachment.startsWith('https://')
+        ? [
+            {
+              url: rawAttachment,
+              name: rawAttachment.split('/').pop() || 'Attachment',
+              mimeType: 'application/octet-stream',
+              size: 0,
+            },
+          ]
+        : [];
+    }
+  });
+
 const Avatar = ({
   name,
   src,
@@ -188,21 +277,37 @@ const Avatar = ({
 }) => (
   <div className={`relative shrink-0 ${size}`}>
     {src ? (
-      <img
-        src={src}
-        alt=""
-        className="h-full w-full rounded-full object-cover"
-      />
+      <img src={src} alt="" className="h-full w-full rounded-full object-cover" />
     ) : (
-      <div className="flex h-full w-full items-center justify-center rounded-full bg-emerald-700 text-sm font-semibold text-white">
+      <div
+        className="flex h-full w-full items-center justify-center rounded-full text-base font-medium text-white"
+        style={{ backgroundColor: colorForName(name) }}
+      >
         {name.slice(0, 1).toUpperCase()}
       </div>
     )}
     {online && (
-      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-[#202c33]" />
+      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-[#25d366]" />
     )}
   </div>
 );
+
+/* Bubble tail (the little corner flap WhatsApp draws on the first message of a group) */
+const BubbleTail = ({ own }: { own: boolean }) => (
+  <span
+    aria-hidden="true"
+    className={`absolute top-0 h-[13px] w-2 ${own ? '-right-[7px]' : '-left-[7px]'}`}
+    style={{
+      backgroundColor: own ? '#d9fdd3' : '#ffffff',
+      clipPath: own ? 'polygon(0 0, 100% 0, 0 100%)' : 'polygon(0 0, 100% 0, 100% 100%)',
+    }}
+  />
+);
+
+const EMOJIS = [
+  '😀', '😂', '😊', '😍', '👍', '🙏', '❤️', '🎉', '😅', '🤔', '🔥', '🙌',
+  '😎', '🥳', '👌', '💯', '😢', '😮', '🤝', '✅', '⭐', '👏', '💬', '📦',
+];
 
 export const ChatInbox = ({
   role,
@@ -220,7 +325,10 @@ export const ChatInbox = ({
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [search, setSearch] = useState('');
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [draft, setDraft] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -228,12 +336,12 @@ export const ChatInbox = ({
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [typing, setTyping] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [isDark, setIsDark] = useState(true);
   const [isMobileList, setIsMobileList] = useState(!initialConversationId);
   const [showNewMessages, setShowNewMessages] = useState(false);
   const [loadError, setLoadError] = useState('');
   const messagePaneRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingSent = useRef(false);
   const loadingOlderRef = useRef(false);
@@ -385,7 +493,7 @@ export const ChatInbox = ({
               conversation.conversationId === incoming.conversationId
                 ? {
                     ...conversation,
-                    lastMessage: incoming.content ?? '',
+                    lastMessage: setLastMessagePreview(incoming),
                     lastMessageAt: incoming.createdAt,
                     unreadCount:
                       incoming.senderType === role ||
@@ -488,13 +596,15 @@ export const ChatInbox = ({
 
   const filteredConversations = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    if (!normalizedSearch) return conversations;
-    return conversations.filter(
-      (conversation) =>
+    return conversations.filter((conversation) => {
+      if (unreadOnly && conversation.unreadCount === 0) return false;
+      if (!normalizedSearch) return true;
+      return (
         conversation.other.name.toLowerCase().includes(normalizedSearch) ||
-        conversation.lastMessage.toLowerCase().includes(normalizedSearch),
-    );
-  }, [conversations, search]);
+        conversation.lastMessage.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [conversations, search, unreadOnly]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!selectedId || !hasMore || !nextCursor || loadingOlderRef.current) return;
@@ -528,21 +638,28 @@ export const ChatInbox = ({
   }, [api, hasMore, nextCursor, role, selectedId]);
 
   const performSend = useCallback(
-    async (content: string, tempId: string) => {
-      if (!selectedId || !content.trim()) return;
+    async (content: string, tempId: string, files: File[] = []) => {
+      if (!selectedId || (!content.trim() && !files.length)) return;
+      setIsUploading(files.length > 0);
       const optimistic: ChatMessage = {
         id: `temp:${tempId}`,
         conversationId: selectedId,
         senderId: '',
         senderType: role,
-        content,
+        content:
+          content.trim() ||
+          (files.length
+            ? `Uploading ${files.length} file${files.length === 1 ? '' : 's'}…`
+            : ''),
         status: 'sent',
         createdAt: new Date().toISOString(),
         clientTempId: tempId,
         localStatus: 'sending',
+        localFiles: files,
       };
       setMessages((current) => mergeServerMessage(current, optimistic));
       setDraft('');
+      setSelectedFiles([]);
       if (composerRef.current) composerRef.current.style.height = 'auto';
       setEmojiOpen(false);
       nearBottomRef.current = true;
@@ -561,9 +678,39 @@ export const ChatInbox = ({
         typingSent.current = false;
       }
       try {
+        const uploadedAttachments = await Promise.all(
+          files.map(async (file): Promise<ChatAttachment> => {
+            const fileData = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                if (typeof reader.result === 'string') resolve(reader.result);
+                else reject(new Error(`Unable to read ${file.name}.`));
+              };
+              reader.onerror = () => reject(new Error(`Unable to read ${file.name}.`));
+              reader.readAsDataURL(file);
+            });
+            const path =
+              role === 'user'
+                ? '/chatting/api/attachments'
+                : '/chatting/api/seller-attachments';
+            const { data } = await api.post<{ attachment: ChatAttachment }>(path, {
+              conversationId: selectedId,
+              fileData,
+              fileName: file.name,
+              mimeType: file.type,
+              size: file.size,
+            });
+            return data.attachment;
+          }),
+        );
         const { data } = await api.post<{ message: ChatMessage }>(
           `/chatting/api/${role === 'user' ? 'messages' : 'seller-messages'}`,
-          { conversationId: selectedId, content: content.trim(), clientTempId: tempId },
+          {
+            conversationId: selectedId,
+            content: content.trim(),
+            attachments: uploadedAttachments,
+            clientTempId: tempId,
+          },
         );
         setMessages((current) =>
           mergeServerMessage(current, {
@@ -577,7 +724,11 @@ export const ChatInbox = ({
               conversation.conversationId === selectedId
                 ? {
                     ...conversation,
-                    lastMessage: content.trim(),
+                    lastMessage:
+                      content.trim() ||
+                      (uploadedAttachments.length
+                        ? `📎 ${uploadedAttachments.length} file${uploadedAttachments.length === 1 ? '' : 's'}`
+                        : ''),
                     lastMessageAt: data.message.createdAt,
                   }
                 : conversation,
@@ -588,14 +739,23 @@ export const ChatInbox = ({
                 new Date(left.lastMessageAt).getTime(),
             ),
         );
-      } catch {
+      } catch (error) {
+        console.error('Unable to send chat message:', error);
         setMessages((current) =>
           current.map((message) =>
             message.id === `temp:${tempId}`
-              ? { ...message, localStatus: 'failed' }
+              ? {
+                  ...message,
+                  localStatus: 'failed',
+                  content: content.trim() || null,
+                  localFiles: files,
+                }
               : message,
           ),
         );
+        setLoadError('Message failed to send. Select Retry to try again.');
+      } finally {
+        setIsUploading(false);
       }
     },
     [api, role, selectedId, socket],
@@ -605,15 +765,49 @@ export const ChatInbox = ({
     (event?: FormEvent) => {
       event?.preventDefault();
       const content = draft.trim();
-      if (!content || !selectedId) return;
+      if ((!content && !selectedFiles.length) || !selectedId || isUploading) return;
       const tempId =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      void performSend(content, tempId);
+      void performSend(content, tempId, selectedFiles);
     },
-    [draft, performSend, selectedId],
+    [draft, isUploading, performSend, selectedFiles, selectedId],
   );
+
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files?.length) return;
+    const allowedTypes = new Set([
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/pdf',
+      'text/plain',
+      'text/csv',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]);
+    const additions = Array.from(files);
+    const invalid = additions.find(
+      (file) =>
+        !allowedTypes.has(file.type) ||
+        file.size < 1 ||
+        file.size > 5 * 1024 * 1024,
+    );
+    if (invalid) {
+      setLoadError(
+        `${invalid.name} is not a supported file or is larger than 5 MB.`,
+      );
+      return;
+    }
+    if (selectedFiles.length + additions.length > 5) {
+      setLoadError('You can attach up to 5 files per message.');
+      return;
+    }
+    setLoadError('');
+    setSelectedFiles((current) => [...current, ...additions]);
+  };
 
   const handleComposerKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -666,165 +860,170 @@ export const ChatInbox = ({
   };
 
   const visibleMessages = messages;
+  const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
+  const canSend = (draft.trim().length > 0 || selectedFiles.length > 0) && !isUploading;
 
   return (
     <section
-      className={`mx-auto flex h-[min(82vh,900px)] min-h-[560px] w-full max-w-[1500px] overflow-hidden rounded-xl border shadow-xl ${
-        isDark
-          ? 'border-[#313d45] bg-[#111b21] text-[#e9edef]'
-          : 'border-slate-200 bg-white text-slate-900'
-      }`}
+      className={`flex h-full min-h-[560px] w-full overflow-hidden bg-white ${C.textPrimary}`}
     >
+      {/* ------------------------------------------------------------ */}
+      {/* LEFT PANE: conversation list                                  */}
+      {/* ------------------------------------------------------------ */}
       <aside
-        className={`w-full shrink-0 flex-col border-r md:flex md:w-[360px] lg:w-[400px] ${
-          isDark ? 'border-[#313d45] bg-[#111b21]' : 'border-slate-200 bg-white'
-        } ${isMobileList ? 'flex' : 'hidden'}`}
+        className={`w-full shrink-0 flex-col border-r ${C.divider} bg-white md:flex md:w-[380px] lg:w-[420px] ${
+          isMobileList ? 'flex' : 'hidden'
+        }`}
       >
-        <div
-          className={`flex h-[70px] items-center justify-between border-b px-4 ${
-            isDark ? 'border-[#313d45]' : 'border-slate-200'
-          }`}
-        >
+        {/* header */}
+        <div className={`flex h-[60px] shrink-0 items-center justify-between px-4 ${C.panelHeader}`}>
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-700 text-white">
+            <div className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${C.green}`}>
               <MessageCircle size={20} />
             </div>
-            <div>
-              <h1 className="text-lg font-semibold">Chats</h1>
-              <p className={`text-xs ${isDark ? 'text-[#8696a0]' : 'text-slate-500'}`}>
-                Your conversations
-              </p>
-            </div>
+            <h1 className="text-[19px] font-semibold tracking-tight">
+              {role === 'seller' ? 'Customers' : 'Chats'}
+            </h1>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsDark((current) => !current)}
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            className={`rounded-full p-2 ${
-              isDark ? 'text-[#aebac1] hover:bg-[#202c33]' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {isDark ? <Sun size={19} /> : <Moon size={19} />}
-          </button>
-        </div>
-        <label
-          className={`mx-3 my-3 flex items-center gap-3 rounded-lg px-3 py-2 ${
-            isDark ? 'bg-[#202c33] text-[#aebac1]' : 'bg-slate-100 text-slate-500'
-          }`}
-        >
-          <Search size={17} />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search or start a new chat"
-            className={`min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:opacity-70 ${
-              isDark ? 'text-[#e9edef]' : 'text-slate-900'
-            }`}
-          />
-          {search && (
-            <button type="button" aria-label="Clear search" onClick={() => setSearch('')}>
-              <X size={15} />
-            </button>
+          {totalUnread > 0 && (
+            <span className="rounded-full bg-[#25d366] px-2.5 py-0.5 text-xs font-semibold text-white">
+              {totalUnread > 99 ? '99+' : totalUnread} unread
+            </span>
           )}
-        </label>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        </div>
+
+        {/* search */}
+        <div className="shrink-0 bg-white px-3 pb-1 pt-2">
+          <label className={`flex h-9 items-center gap-4 rounded-lg px-3 ${C.panelHeader} ${C.icon}`}>
+            <Search size={16} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search or start a new chat"
+              className="min-w-0 flex-1 bg-transparent text-[14px] text-[#111b21] outline-none placeholder:text-[#667781]"
+            />
+            {search && (
+              <button type="button" aria-label="Clear search" onClick={() => setSearch('')}>
+                <X size={15} />
+              </button>
+            )}
+          </label>
+        </div>
+
+        {/* filter chips */}
+        <div className="flex shrink-0 gap-2 bg-white px-3 pb-2 pt-1.5">
+          {[
+            { label: 'All', active: !unreadOnly, onClick: () => setUnreadOnly(false) },
+            { label: 'Unread', active: unreadOnly, onClick: () => setUnreadOnly(true) },
+          ].map((chip) => (
+            <button
+              key={chip.label}
+              type="button"
+              onClick={chip.onClick}
+              className={`rounded-full px-3 py-1 text-[13px] transition ${
+                chip.active
+                  ? 'bg-[#d9fdd3] font-medium text-[#008069]'
+                  : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'
+              }`}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {/* list */}
+        <div className={`min-h-0 flex-1 overflow-y-auto ${scrollbar}`}>
           {loadingConversations ? (
-            <div className="space-y-1 px-3">
-              {Array.from({ length: 7 }, (_, index) => (
-                <div key={index} className="flex animate-pulse items-center gap-3 p-3">
-                  <div className={`h-12 w-12 rounded-full ${isDark ? 'bg-[#26343b]' : 'bg-slate-200'}`} />
-                  <div className="flex-1 space-y-2">
-                    <div className={`h-3 w-2/3 rounded ${isDark ? 'bg-[#26343b]' : 'bg-slate-200'}`} />
-                    <div className={`h-3 w-full rounded ${isDark ? 'bg-[#26343b]' : 'bg-slate-200'}`} />
+            <div>
+              {Array.from({ length: 8 }, (_, index) => (
+                <div key={index} className="flex animate-pulse items-center gap-3 px-4 py-3">
+                  <div className="h-[49px] w-[49px] rounded-full bg-[#e9edef]" />
+                  <div className="flex-1 space-y-2.5">
+                    <div className="h-3 w-1/2 rounded bg-[#e9edef]" />
+                    <div className="h-3 w-4/5 rounded bg-[#f0f2f5]" />
                   </div>
                 </div>
               ))}
             </div>
           ) : loadError && !conversations.length ? (
-            <p className="p-5 text-sm text-rose-400">{loadError}</p>
+            <p className="p-5 text-sm text-rose-600">{loadError}</p>
           ) : filteredConversations.length ? (
-            filteredConversations.map((conversation) => (
-              <button
-                key={conversation.conversationId}
-                type="button"
-                onClick={() => selectConversation(conversation.conversationId)}
-                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${
-                  selectedId === conversation.conversationId
-                    ? isDark
-                      ? 'bg-[#2a3942]'
-                      : 'bg-emerald-50'
-                    : isDark
-                      ? 'hover:bg-[#202c33]'
-                      : 'hover:bg-slate-50'
-                }`}
-              >
-                <Avatar
-                  name={conversation.other.name}
-                  src={conversation.other.avatar}
-                  online={conversation.other.isOnline}
-                  size="h-12 w-12"
-                />
-                <span className={`min-w-0 flex-1 border-b pb-3 ${
-                  isDark ? 'border-[#26343b]' : 'border-slate-100'
-                }`}>
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="truncate text-[15px] font-medium">
-                      {conversation.other.name}
-                    </span>
-                    <span className={`shrink-0 text-[11px] ${
-                      conversation.unreadCount
-                        ? 'text-emerald-500'
-                        : isDark
-                          ? 'text-[#8696a0]'
-                          : 'text-slate-500'
-                    }`}>
-                      {formatTime(conversation.lastMessageAt)}
-                    </span>
-                  </span>
-                  <span className="mt-1 flex items-center justify-between gap-2">
-                    <span className={`truncate text-[13px] ${
-                      isDark ? 'text-[#8696a0]' : 'text-slate-500'
-                    }`}>
-                      {conversation.lastMessage || 'Start a conversation'}
-                    </span>
-                    {conversation.unreadCount > 0 && (
-                      <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-semibold text-white">
-                        {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+            filteredConversations.map((conversation) => {
+              const active = selectedId === conversation.conversationId;
+              const unread = conversation.unreadCount > 0;
+              return (
+                <button
+                  key={conversation.conversationId}
+                  type="button"
+                  onClick={() => selectConversation(conversation.conversationId)}
+                  className={`flex w-full items-center gap-3 pl-3 pr-4 text-left transition-colors ${
+                    active ? 'bg-[#f0f2f5]' : 'hover:bg-[#f5f6f6]'
+                  }`}
+                >
+                  <Avatar
+                    name={conversation.other.name}
+                    src={conversation.other.avatar}
+                    online={conversation.other.isOnline}
+                    size="h-[49px] w-[49px]"
+                  />
+                  <span className={`min-w-0 flex-1 border-b py-3 ${C.divider}`}>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[16.5px] text-[#111b21]">
+                        {conversation.other.name}
                       </span>
-                    )}
+                      <span
+                        className={`shrink-0 text-[12px] ${
+                          unread ? `${C.greenText} font-medium` : C.textSecondary
+                        }`}
+                      >
+                        {formatListTime(conversation.lastMessageAt)}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 flex items-center justify-between gap-2">
+                      <span
+                        className={`truncate text-[14px] ${
+                          unread ? 'font-medium text-[#111b21]' : C.textSecondary
+                        }`}
+                      >
+                        {conversation.lastMessage || 'Start a conversation'}
+                      </span>
+                      {unread && (
+                        <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#25d366] px-1.5 text-[12px] font-semibold text-white">
+                          {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                        </span>
+                      )}
+                    </span>
                   </span>
-                </span>
-              </button>
-            ))
+                </button>
+              );
+            })
           ) : (
-            <div className={`px-6 py-14 text-center text-sm ${
-              isDark ? 'text-[#8696a0]' : 'text-slate-500'
-            }`}>
-              {search ? 'No matching conversations.' : 'No conversations yet.'}
+            <div className={`px-8 py-16 text-center text-sm ${C.textSecondary}`}>
+              {search
+                ? 'No chats found.'
+                : unreadOnly
+                  ? 'No unread chats.'
+                  : 'No conversations yet.'}
             </div>
           )}
         </div>
       </aside>
 
+      {/* ------------------------------------------------------------ */}
+      {/* RIGHT PANE: conversation                                      */}
+      {/* ------------------------------------------------------------ */}
       <div
-        className={`min-w-0 flex-1 flex-col ${
-          isMobileList ? 'hidden md:flex' : 'flex'
-        } ${isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'}`}
+        className={`min-w-0 flex-1 flex-col ${isMobileList ? 'hidden md:flex' : 'flex'} ${C.chatBg}`}
       >
         {selectedConversation ? (
           <>
-            <header
-              className={`flex h-[70px] shrink-0 items-center gap-3 border-b px-3 sm:px-5 ${
-                isDark ? 'border-[#313d45] bg-[#202c33]' : 'border-slate-200 bg-white'
-              }`}
-            >
+            {/* header */}
+            <header className={`flex h-[60px] shrink-0 items-center gap-3 px-3 sm:px-4 ${C.panelHeader}`}>
               <button
                 type="button"
                 aria-label="Back to conversations"
                 onClick={() => setIsMobileList(true)}
-                className={`rounded-full p-2 md:hidden ${
-                  isDark ? 'hover:bg-[#2a3942]' : 'hover:bg-slate-100'
-                }`}
+                className={`rounded-full p-2 hover:bg-black/5 md:hidden ${C.icon}`}
               >
                 <ArrowLeft size={20} />
               </button>
@@ -834,12 +1033,16 @@ export const ChatInbox = ({
                 size="h-10 w-10"
               />
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-[15px] font-medium">
+                <h2 className="truncate text-[16px] leading-tight text-[#111b21]">
                   {selectedConversation.other.name}
                 </h2>
-                <p className={`mt-0.5 text-xs ${
-                  typing ? 'text-emerald-500' : isDark ? 'text-[#8696a0]' : 'text-slate-500'
-                }`}>
+                <p
+                  className={`mt-0.5 text-[13px] leading-tight ${
+                    typing || selectedConversation.other.isOnline
+                      ? C.greenText
+                      : C.textSecondary
+                  }`}
+                >
                   {typing
                     ? 'typing…'
                     : selectedConversation.other.isOnline
@@ -847,122 +1050,162 @@ export const ChatInbox = ({
                       : 'last seen recently'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsDark((current) => !current)}
-                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                className={`rounded-full p-2 ${
-                  isDark ? 'text-[#aebac1] hover:bg-[#2a3942]' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {isDark ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
             </header>
 
+            {/* messages */}
             <div
               ref={messagePaneRef}
               onScroll={handleScroll}
-              className={`relative min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-8 ${
-                isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'
-              }`}
+              className={`relative min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-[7%] ${scrollbar}`}
               style={{
-                backgroundImage: isDark
-                  ? 'radial-gradient(circle at 20% 20%, rgba(35,52,59,.28) 0 1px, transparent 1px)'
-                  : 'radial-gradient(circle at 20% 20%, rgba(120,113,108,.10) 0 1px, transparent 1px)',
-                backgroundSize: '24px 24px',
+                backgroundImage:
+                  'radial-gradient(circle at 20% 20%, rgba(11,20,26,.06) 0 1px, transparent 1.5px), radial-gradient(circle at 70% 60%, rgba(11,20,26,.05) 0 1px, transparent 1.5px)',
+                backgroundSize: '28px 28px, 36px 36px',
               }}
             >
               {hasMore && (
-                <div className="mb-4 flex justify-center">
+                <div className="mb-3 flex justify-center">
                   <button
                     type="button"
                     onClick={() => void loadOlderMessages()}
                     disabled={loadingOlder}
-                    className={`rounded-full px-3 py-1.5 text-xs shadow ${
-                      isDark ? 'bg-[#202c33] text-[#aebac1]' : 'bg-white text-slate-600'
-                    }`}
+                    className="rounded-lg bg-white px-3 py-1.5 text-xs text-[#54656f] shadow-sm hover:bg-[#f5f6f6]"
                   >
                     {loadingOlder ? 'Loading older messages…' : 'Load earlier messages'}
                   </button>
                 </div>
               )}
+
               {loadingMessages ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {[0, 1, 2, 3, 4].map((item) => (
-                    <div key={item} className={`h-10 animate-pulse rounded-xl ${
-                      item % 2
-                        ? 'ml-auto w-2/3 bg-emerald-900/30'
-                        : `w-1/2 ${isDark ? 'bg-[#202c33]' : 'bg-white/70'}`
-                    }`} />
+                    <div
+                      key={item}
+                      className={`h-10 animate-pulse rounded-lg ${
+                        item % 2 ? 'ml-auto w-2/5 bg-[#d9fdd3]/70' : 'w-1/3 bg-white/80'
+                      }`}
+                    />
                   ))}
                 </div>
               ) : (
-                <div className="mx-auto flex max-w-4xl flex-col gap-1">
+                <div className="mx-auto flex max-w-4xl flex-col">
                   {visibleMessages.map((message, index) => {
                     const previous = visibleMessages[index - 1];
                     const own = message.senderType === role;
+                    const newDay = !previous || !sameDay(previous.createdAt, message.createdAt);
+                    const firstInGroup =
+                      newDay || !previous || previous.senderType !== message.senderType;
+                    const attachments = getMessageAttachments(message);
                     return (
                       <div key={message.id}>
-                        {(!previous || !sameDay(previous.createdAt, message.createdAt)) && (
-                          <div className="my-4 flex justify-center">
-                            <span className={`rounded-lg px-3 py-1 text-[11px] shadow ${
-                              isDark ? 'bg-[#202c33] text-[#c5d0d5]' : 'bg-white/90 text-slate-600'
-                            }`}>
+                        {newDay && (
+                          <div className="my-3 flex justify-center">
+                            <span className="rounded-lg bg-white px-3 py-1 text-[12.5px] uppercase tracking-wide text-[#54656f] shadow-sm">
                               {dayLabel(message.createdAt)}
                             </span>
                           </div>
                         )}
-                        <div className={`flex ${own ? 'justify-end' : 'justify-start'}`}>
-                          <article className={`max-w-[88%] rounded-lg px-3 py-2 shadow-sm sm:max-w-[75%] ${
-                            own
-                              ? isDark
-                                ? 'rounded-tr-sm bg-[#005c4b] text-[#e9edef]'
-                                : 'rounded-tr-sm bg-[#d9fdd3] text-slate-900'
-                              : isDark
-                                ? 'rounded-tl-sm bg-[#202c33] text-[#e9edef]'
-                                : 'rounded-tl-sm bg-white text-slate-900'
-                          }`}>
-                            {message.localStatus === 'failed' ? (
+                        <div
+                          className={`flex ${own ? 'justify-end' : 'justify-start'} ${
+                            firstInGroup ? 'mt-2' : 'mt-[3px]'
+                          }`}
+                        >
+                          <article
+                            className={`relative max-w-[85%] px-2.5 pb-1.5 pt-1.5 text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[65%] ${
+                              own ? 'bg-[#d9fdd3]' : 'bg-white'
+                            } ${
+                              firstInGroup
+                                ? own
+                                  ? 'rounded-lg rounded-tr-none'
+                                  : 'rounded-lg rounded-tl-none'
+                                : 'rounded-lg'
+                            }`}
+                          >
+                            {firstInGroup && <BubbleTail own={own} />}
+
+                            {message.localStatus === 'failed' && (
                               <button
                                 type="button"
                                 onClick={() =>
                                   void performSend(
                                     message.content ?? '',
                                     message.clientTempId ?? message.id.slice(5),
+                                    message.localFiles ?? [],
                                   )
                                 }
-                                className="mb-1 flex items-center gap-1 text-xs text-rose-400 underline"
+                                className="mb-1 flex items-center gap-1 text-xs font-medium text-rose-600 underline"
                               >
                                 Failed to send · Retry
                               </button>
-                            ) : null}
-                            <p className="whitespace-pre-wrap break-words text-[14px] leading-5">
-                              {message.content}
-                            </p>
-                            <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
-                              own
-                                ? isDark
-                                  ? 'text-emerald-100/70'
-                                  : 'text-slate-500'
-                                : isDark
-                                  ? 'text-[#8696a0]'
-                                  : 'text-slate-500'
-                            }`}>
-                              {message.localStatus === 'sending' && (
-                                <LoaderCircle size={11} className="animate-spin" />
+                            )}
+
+                            {attachments.length > 0 && (
+                              <div className="mb-1 flex flex-col gap-1.5">
+                                {attachments.map((attachment) =>
+                                  attachment.mimeType.startsWith('image/') ? (
+                                    <a
+                                      key={`${attachment.url}-${attachment.name}`}
+                                      href={attachment.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block overflow-hidden rounded-md"
+                                    >
+                                      <img
+                                        src={attachment.url}
+                                        alt={attachment.name}
+                                        className="max-h-64 w-full max-w-[280px] object-cover"
+                                      />
+                                    </a>
+                                  ) : (
+                                    <a
+                                      key={`${attachment.url}-${attachment.name}`}
+                                      href={attachment.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className={`flex max-w-[280px] items-center gap-2.5 rounded-md p-2 ${
+                                        own ? 'bg-[#c7f0c0]' : 'bg-[#f0f2f5]'
+                                      }`}
+                                    >
+                                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-white text-[#54656f]">
+                                        <FileText size={20} />
+                                      </span>
+                                      <span className="min-w-0">
+                                        <span className="block truncate text-[13px] font-medium">
+                                          {attachment.name}
+                                        </span>
+                                        <span className="block text-[11px] uppercase text-[#667781]">
+                                          {attachment.name.split('.').pop()?.slice(0, 5) || 'file'}
+                                        </span>
+                                      </span>
+                                    </a>
+                                  ),
+                                )}
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap items-end justify-end gap-x-2">
+                              {message.content && (
+                                <p className="min-w-0 max-w-full flex-1 whitespace-pre-wrap break-words text-[14.2px] leading-[19px]">
+                                  {message.content}
+                                </p>
                               )}
-                              <time dateTime={message.createdAt}>
-                                {formatTime(message.createdAt)}
-                              </time>
-                              {own && message.localStatus !== 'failed' && (
-                                message.status === 'seen' ? (
-                                  <CheckCheck size={15} className="text-sky-300" />
-                                ) : message.status === 'delivered' ? (
-                                  <CheckCheck size={15} />
-                                ) : (
-                                  <Check size={14} />
-                                )
-                              )}
+                              <span className="ml-auto flex shrink-0 translate-y-[3px] items-center gap-1 pl-1 text-[11px] leading-none text-[#667781]">
+                                {message.localStatus === 'sending' && (
+                                  <LoaderCircle size={11} className="animate-spin" />
+                                )}
+                                <time dateTime={message.createdAt}>
+                                  {formatTime(message.createdAt)}
+                                </time>
+                                {own &&
+                                  message.localStatus !== 'failed' &&
+                                  (message.status === 'seen' ? (
+                                    <CheckCheck size={16} className="text-[#53bdeb]" />
+                                  ) : message.status === 'delivered' ? (
+                                    <CheckCheck size={16} />
+                                  ) : (
+                                    <Check size={15} />
+                                  ))}
+                              </span>
                             </div>
                           </article>
                         </div>
@@ -972,11 +1215,21 @@ export const ChatInbox = ({
                   <div aria-hidden="true" />
                 </div>
               )}
+
               {loadError && (
-                <p className="mx-auto mt-3 max-w-4xl rounded bg-rose-950/80 px-3 py-2 text-sm text-rose-100">
-                  {loadError}
-                </p>
+                <div className="sticky bottom-2 mx-auto mt-3 flex w-fit max-w-full items-center gap-3 rounded-lg bg-[#fff3cd] px-3 py-2 text-[13px] text-[#664d03] shadow-md">
+                  <span>{loadError}</span>
+                  <button
+                    type="button"
+                    aria-label="Dismiss"
+                    onClick={() => setLoadError('')}
+                    className="rounded-full p-0.5 hover:bg-black/10"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               )}
+
               {showNewMessages && (
                 <button
                   type="button"
@@ -985,91 +1238,136 @@ export const ChatInbox = ({
                     if (pane) pane.scrollTo({ top: pane.scrollHeight, behavior: 'smooth' });
                     setShowNewMessages(false);
                   }}
-                  className="sticky bottom-2 left-1/2 mx-auto flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white shadow-lg"
+                  className={`sticky bottom-3 mx-auto mt-2 flex w-fit items-center gap-2 rounded-full px-4 py-2 text-xs font-medium text-white shadow-lg ${C.green} ${C.greenHover}`}
                 >
                   <ArrowDown size={15} /> New messages
                 </button>
               )}
             </div>
 
+            {/* composer */}
             <form
               onSubmit={submitMessage}
-              className={`relative flex shrink-0 items-end gap-2 px-3 py-3 sm:px-5 ${
-                isDark ? 'bg-[#202c33]' : 'bg-[#f0f2f5]'
-              }`}
+              className={`relative flex shrink-0 flex-col gap-2 px-3 py-2.5 sm:px-4 ${C.panelHeader}`}
             >
               {emojiOpen && (
-                <div className={`absolute bottom-[72px] left-3 z-10 grid grid-cols-6 gap-1 rounded-xl p-2 shadow-xl ${
-                  isDark ? 'bg-[#233138]' : 'bg-white'
-                }`}>
-                  {['😀', '😂', '😊', '😍', '👍', '🙏', '❤️', '🎉', '😅', '🤔', '🔥', '🙌'].map(
-                    (emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => {
-                          handleDraftChange(`${draft}${emoji}`);
-                          composerRef.current?.focus();
-                        }}
-                        className="rounded p-1 text-xl hover:bg-black/10"
-                      >
-                        {emoji}
-                      </button>
-                    ),
-                  )}
+                <div className="absolute bottom-[64px] left-3 z-10 grid grid-cols-8 gap-0.5 rounded-xl bg-white p-2 shadow-[0_4px_20px_rgba(11,20,26,0.2)] sm:left-12">
+                  {EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        handleDraftChange(`${draft}${emoji}`);
+                        composerRef.current?.focus();
+                      }}
+                      className="rounded-lg p-1.5 text-[22px] leading-none hover:bg-[#f0f2f5]"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
                 </div>
               )}
-              <button
-                type="button"
-                aria-label="Choose emoji"
-                onClick={() => setEmojiOpen((current) => !current)}
-                className={`mb-1 rounded-full p-2 ${
-                  isDark ? 'text-[#aebac1] hover:bg-[#2a3942]' : 'text-slate-500 hover:bg-slate-200'
-                }`}
-              >
-                <Smile size={22} />
-              </button>
-              <textarea
-                ref={composerRef}
-                value={draft}
-                rows={1}
-                onChange={(event) => {
-                  handleDraftChange(event.target.value);
-                  event.target.style.height = 'auto';
-                  event.target.style.height = `${Math.min(event.target.scrollHeight, 140)}px`;
-                }}
-                onKeyDown={handleComposerKey}
-                placeholder="Type a message"
-                className={`max-h-[140px] min-h-11 flex-1 resize-none rounded-lg px-4 py-3 text-sm outline-none ${
-                  isDark
-                    ? 'bg-[#2a3942] text-[#e9edef] placeholder:text-[#8696a0]'
-                    : 'bg-white text-slate-900 placeholder:text-slate-400'
-                }`}
-              />
-              <button
-                type="submit"
-                disabled={!draft.trim()}
-                aria-label="Send message"
-                className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Send size={18} />
-              </button>
+
+              {selectedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedFiles.map((file, index) => (
+                    <span
+                      key={`${file.name}-${file.lastModified}-${index}`}
+                      className="flex max-w-[240px] items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs text-[#3b4a54] shadow-sm"
+                    >
+                      <FileText size={14} className="shrink-0 text-[#667781]" />
+                      <span className="truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${file.name}`}
+                        onClick={() =>
+                          setSelectedFiles((current) =>
+                            current.filter((_, fileIndex) => fileIndex !== index),
+                          )
+                        }
+                        className="shrink-0 rounded-full p-0.5 hover:bg-black/10"
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-end gap-1.5">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(event) => {
+                    handleFilesSelected(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  aria-label="Choose emoji"
+                  onClick={() => setEmojiOpen((current) => !current)}
+                  className={`mb-0.5 rounded-full p-2 transition hover:bg-black/5 ${
+                    emojiOpen ? 'bg-black/5 text-[#00a884]' : C.icon
+                  }`}
+                >
+                  <Smile size={24} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Attach photos or files"
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`mb-0.5 rounded-full p-2 transition hover:bg-black/5 ${C.icon}`}
+                >
+                  <Paperclip size={22} />
+                </button>
+                <textarea
+                  ref={composerRef}
+                  value={draft}
+                  rows={1}
+                  onChange={(event) => {
+                    handleDraftChange(event.target.value);
+                    event.target.style.height = 'auto';
+                    event.target.style.height = `${Math.min(event.target.scrollHeight, 140)}px`;
+                  }}
+                  onKeyDown={handleComposerKey}
+                  placeholder="Type a message"
+                  className={`max-h-[140px] min-h-[42px] flex-1 resize-none rounded-lg bg-white px-3.5 py-[10px] text-[15px] leading-[21px] text-[#111b21] outline-none placeholder:text-[#667781] ${scrollbar}`}
+                />
+                <button
+                  type="submit"
+                  disabled={!canSend}
+                  aria-label={isUploading ? 'Uploading files' : 'Send message'}
+                  className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition ${C.green} ${C.greenHover} disabled:cursor-not-allowed disabled:bg-[#b9c2c7]`}
+                >
+                  {isUploading ? (
+                    <LoaderCircle size={18} className="animate-spin" />
+                  ) : (
+                    <Send size={18} className="translate-x-[1px]" />
+                  )}
+                </button>
+              </div>
             </form>
           </>
         ) : (
-          <div className={`hidden h-full flex-col items-center justify-center gap-3 text-center md:flex ${
-            isDark ? 'text-[#8696a0]' : 'text-slate-500'
-          }`}>
-            <div className={`flex h-20 w-20 items-center justify-center rounded-full ${
-              isDark ? 'bg-[#202c33]' : 'bg-white'
-            }`}>
-              <MessageCircle size={36} className="text-emerald-500" />
+          <div
+            className={`hidden h-full flex-col items-center justify-center border-b-[6px] border-[#25d366] bg-[#f0f2f5] px-8 text-center md:flex`}
+          >
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white shadow-sm">
+              <MessageCircle size={44} className={C.greenText} />
             </div>
-            <h2 className={`text-xl font-light ${isDark ? 'text-[#e9edef]' : 'text-slate-800'}`}>
+            <h2 className="mt-7 text-[30px] font-light text-[#41525d]">
               Keep your conversations close
             </h2>
-            <p className="max-w-sm text-sm">
-              Select a chat to continue messaging securely with your {role === 'user' ? 'seller' : 'customer'}.
+            <p className="mt-3 max-w-md text-[14px] leading-6 text-[#667781]">
+              Select a chat to continue messaging with your{' '}
+              {role === 'user' ? 'seller' : 'customer'}.
+            </p>
+            <p className="mt-10 flex items-center gap-1.5 text-[13px] text-[#8696a0]">
+              <Lock size={12} /> Your messages are private to this conversation
             </p>
           </div>
         )}

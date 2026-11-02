@@ -10,6 +10,7 @@ import {
   getUserConversations,
   newConversation,
   sendMessage,
+  uploadChatAttachment,
 } from '../controllers/chatting.controller';
 
 const router: Router = express.Router();
@@ -26,5 +27,7 @@ router.get(
 );
 router.post('/messages', isUserAuthenticated, sendMessage);
 router.post('/seller-messages', isSellerAuthenticated, sendMessage);
+router.post('/attachments', isUserAuthenticated, uploadChatAttachment);
+router.post('/seller-attachments', isSellerAuthenticated, uploadChatAttachment);
 
 export default router;
