@@ -25,7 +25,9 @@ import {
   getSeller,
   setDefaultUserAddress,
 } from '../controllers/auth.controller';
-import isAuthenticated from '@repo/middleware/isAuthenticated';
+import isAuthenticated, {
+  isSellerAuthenticated,
+} from '@repo/middleware/isAuthenticated';
 import { isSeller } from '@repo/middleware/authorizeRoles';
 
 export const router: Router = express.Router();
@@ -71,4 +73,4 @@ router.post(
   createStripeConnectLink,
 );
 router.post('/login-seller', loginSeller);
-router.post('/logged-in-seller', isAuthenticated, isSeller, getSeller);
+router.post('/logged-in-seller', isSellerAuthenticated, getSeller);

@@ -50,7 +50,7 @@ axiosInstance.interceptors.response.use(
             try {
                 await axios.post(
                     `${process.env.NEXT_PUBLIC_SERVER_URI}/api/refresh-token`,
-                    {},
+                    { role: 'seller' },
                     {withCredentials: true}
                 );
                 isRefreshing = false;

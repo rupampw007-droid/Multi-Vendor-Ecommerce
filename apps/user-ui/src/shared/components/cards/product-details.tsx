@@ -3,6 +3,10 @@
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import useStartChat from '@/hooks/useStartChat'
+import useUser from '@/hooks/useUser'
+import useLocationTracking from '@/hooks/useLocationTracking'
+import useDeviceTracking from '@/hooks/useDeviceTracking'
+import { useStore } from '@/store'
 import {
   X,
   Star,
@@ -138,6 +142,15 @@ export const ProductDetails = ({
   className = '',
 }: ProductDetailsProps) => {
   const { startChat, isStarting, error: chatError } = useStartChat()
+  const { user } = useUser()
+  const location = useLocationTracking()
+  const deviceInfo = useDeviceTracking()
+  const addToCart = useStore((state) => state.addToCart)
+  const addToWishlist = useStore((state) => state.addToWishlist)
+  const removeFromWishlist = useStore((state) => state.removeFromWishlist)
+  const isWishlisted = useStore((state) =>
+    state.wishlist.some((product) => product.id === data?.id),
+  )
   const [activeImage, setActiveImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [selectedColor, setSelectedColor] = useState<string | null>(
@@ -146,7 +159,7 @@ export const ProductDetails = ({
   const [selectedSize, setSelectedSize] = useState<string | null>(
     data?.sizes?.[0] ?? null
   )
-  const [wishlisted, setWishlisted] = useState(false)
+  const [addedToCart, setAddedToCart] = useState(false)
 
   // Close on Escape (only when an onClose handler is provided)
   useEffect(() => {
@@ -155,6 +168,10 @@ export const ProductDetails = ({
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  useEffect(() => {
+    setAddedToCart(false)
+  }, [data?.id])
 
   const productImages =
     data?.images
@@ -208,71 +225,129 @@ export const ProductDetails = ({
   }
 
   const handleAddToCart = () => {
-    onAddToCart?.({
-      product: data,
-      quantity,
-      color: selectedColor,
-      size: selectedSize,
-    })
+    if (onAddToCart) {
+      onAddToCart({
+        product: data,
+        quantity,
+        color: selectedColor,
+        size: selectedSize,
+      })
+      return
+    }
+    if (!data?.id) return
+    addToCart(
+      {
+        id: data.id,
+        title: data.title ?? 'Product',
+        price: salePrice ?? regularPrice ?? 0,
+        image: images[0]?.url ?? '/placeholder.png',
+        quantity,
+        shopId: shop?.id ?? '',
+      },
+      user,
+      location,
+      deviceInfo,
+    )
+    setAddedToCart(true)
+  }
+
+  const handleWishlist = () => {
+    if (!data?.id) return
+    const product = {
+      id: data.id,
+      title: data.title ?? 'Product',
+      price: salePrice ?? regularPrice ?? 0,
+      image: images[0]?.url ?? '/placeholder.png',
+      quantity: 1,
+      shopId: shop?.id ?? '',
+    }
+    if (isWishlisted) {
+      removeFromWishlist(data.id, user, location, deviceInfo)
+    } else {
+      addToWishlist(product, user, location, deviceInfo)
+    }
   }
 
   return (
-    <section
-      aria-label={data?.title}
-      className={`relative w-full rounded-xl bg-white p-5 md:p-6 ${className}`}
-    >
-      {onClose && (
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          className="absolute right-4 top-4 z-10 rounded-full bg-gray-100 p-2 hover:bg-gray-200"
-        >
-          <X size={18} />
-        </button>
-      )}
-
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {/* Gallery */}
-        <div>
-          <div className="aspect-square w-full overflow-hidden rounded-lg bg-gray-100">
-            <img
-              src={images[activeImage]?.url}
-              alt={data?.title || 'Product image'}
-              className="h-full w-full object-cover"
-            />
-          </div>
-          {images.length > 1 && (
-            <div className="mt-3 flex gap-2 overflow-x-auto">
-              {images.map((img, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => setActiveImage(index)}
-                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 ${
-                    index === activeImage
-                      ? 'border-black'
-                      : 'border-transparent'
-                  }`}
-                >
-                  <img
-                    src={img.url}
-                    alt={`Thumbnail ${index + 1}`}
-                    className="h-full w-full object-cover"
-                  />
-                </button>
-              ))}
-            </div>
+    <main className="min-h-screen bg-[#f1f3f6] px-3 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1440px]">
+        <nav aria-label="Breadcrumb" className="mb-4 text-xs text-slate-500 sm:text-sm">
+          <Link href="/" className="hover:text-blue-700 hover:underline">Home</Link>
+          <span className="mx-2">›</span>
+          {data?.category && (
+            <>
+              <Link href="/products" className="hover:text-blue-700 hover:underline">
+                {data.category}
+              </Link>
+              <span className="mx-2">›</span>
+            </>
           )}
-        </div>
+          <span className="line-clamp-1 text-slate-700">{data?.title}</span>
+        </nav>
 
-        {/* Details */}
-        <div className="space-y-4">
-          <h2 className={`text-2xl font-semibold text-gray-900 ${onClose ? 'pr-10' : ''}`}>
+        <section
+          aria-label={data?.title}
+          className={`relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 lg:p-8 ${className}`}
+        >
+          {onClose && (
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="absolute right-4 top-4 z-10 rounded-full bg-gray-100 p-2 hover:bg-gray-200"
+            >
+              <X size={18} />
+            </button>
+          )}
+
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-10">
+            {/* Gallery */}
+            <div className="lg:sticky lg:top-6 lg:self-start">
+              <div className="flex min-h-[340px] items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-white sm:min-h-[480px]">
+                <img
+                  src={images[activeImage]?.url}
+                  alt={data?.title || 'Product image'}
+                  className="h-full max-h-[620px] w-full object-contain p-4 transition-transform duration-300 hover:scale-[1.04] sm:p-8"
+                />
+              </div>
+              {images.length > 1 && (
+                <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+                  {images.map((img, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setActiveImage(index)}
+                      aria-label={`View product image ${index + 1}`}
+                      aria-pressed={index === activeImage}
+                      className={`h-[68px] w-[68px] shrink-0 overflow-hidden rounded-lg border-2 bg-white p-1 transition sm:h-20 sm:w-20 ${
+                        index === activeImage
+                          ? 'border-blue-600 shadow-sm'
+                          : 'border-slate-200 hover:border-blue-300'
+                      }`}
+                    >
+                      <img
+                        src={img.url}
+                        alt=""
+                        className="h-full w-full object-contain"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600 sm:text-sm">
+                <span className="rounded-full bg-blue-50 px-3 py-1.5">Genuine product</span>
+                <span className="rounded-full bg-emerald-50 px-3 py-1.5">Secure checkout</span>
+                <span className="rounded-full bg-amber-50 px-3 py-1.5">Easy support</span>
+              </div>
+            </div>
+
+            {/* Details */}
+            <div className="space-y-5">
+          <h1 className={`text-xl font-semibold leading-snug text-slate-900 sm:text-2xl ${onClose ? 'pr-10' : ''}`}>
             {data?.title}
-          </h2>
+          </h1>
 
-          <div className="flex items-center gap-2 text-sm text-gray-600">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
             <div className="flex">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Star
@@ -287,11 +362,14 @@ export const ProductDetails = ({
               ))}
             </div>
             <span>{rating ? rating.toFixed(1) : 'No ratings yet'}</span>
+            {data?.brand && <span className="text-slate-300">|</span>}
+            {data?.brand && <span>{data.brand}</span>}
           </div>
 
           {/* Price */}
-          <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-bold text-gray-900">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 sm:p-5">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
               {formatINR(salePrice ?? regularPrice)}
             </span>
             {hasDiscount && (
@@ -305,15 +383,22 @@ export const ProductDetails = ({
               </>
             )}
           </div>
+          <p className="mt-1 text-xs text-slate-500">Inclusive of applicable taxes</p>
+          {hasDiscount && (
+            <p className="mt-3 inline-flex rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+              Special price · You save {formatINR((regularPrice ?? 0) - (salePrice ?? 0))}
+            </p>
+          )}
+          </div>
 
-          <p className="text-sm leading-relaxed text-gray-600">
+          <p className="text-sm leading-6 text-slate-600">
             {data?.short_description || data?.description}
           </p>
 
           {/* Colors */}
           {data?.colors && data.colors.length > 0 && (
             <div>
-              <p className="mb-2 text-sm font-medium text-gray-800">Color</p>
+              <p className="mb-2 text-sm font-semibold text-slate-800">Color</p>
               <div className="flex flex-wrap gap-2">
                 {data.colors.map((color: string) => (
                   <button
@@ -324,9 +409,9 @@ export const ProductDetails = ({
                     aria-pressed={selectedColor === color}
                     onClick={() => setSelectedColor(color)}
                     style={{ backgroundColor: color }}
-                    className={`h-8 w-8 rounded-full border-2 ${
+                    className={`h-9 w-9 rounded-full border-2 ${
                       selectedColor === color
-                        ? 'border-black ring-2 ring-offset-1 ring-black'
+                        ? 'border-blue-600 ring-2 ring-offset-2 ring-blue-600'
                         : 'border-gray-300'
                     }`}
                   />
@@ -338,7 +423,7 @@ export const ProductDetails = ({
           {/* Sizes */}
           {data?.sizes && data.sizes.length > 0 && (
             <div>
-              <p className="mb-2 text-sm font-medium text-gray-800">Size</p>
+              <p className="mb-2 text-sm font-semibold text-slate-800">Size</p>
               <div className="flex flex-wrap gap-2">
                 {data.sizes.map((size: string) => (
                   <button
@@ -347,8 +432,8 @@ export const ProductDetails = ({
                     onClick={() => setSelectedSize(size)}
                     className={`rounded-md border px-3 py-1 text-sm ${
                       selectedSize === size
-                        ? 'border-black bg-black text-white'
-                        : 'border-gray-300 text-gray-700 hover:border-gray-500'
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-gray-300 text-gray-700 hover:border-blue-500'
                     }`}
                   >
                     {size}
@@ -359,26 +444,30 @@ export const ProductDetails = ({
           )}
 
           {/* Stock */}
+          {/* Buy box */}
+          <div className="rounded-xl border border-slate-200 p-4 sm:p-5">
           <p
-            className={`text-sm font-medium ${
-              outOfStock ? 'text-red-600' : 'text-green-600'
+            className={`text-sm font-semibold ${
+              outOfStock ? 'text-red-600' : 'text-emerald-700'
             }`}
           >
             {outOfStock
-              ? 'Out of stock'
+              ? 'Currently unavailable'
               : stock !== undefined
-              ? `In stock (${stock} available)`
+              ? `In stock · ${stock} available`
               : 'In stock'}
           </p>
-
-          {/* Quantity + actions */}
-          <div className="flex flex-wrap items-center gap-3">
+          <p className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+            <Truck size={16} className="text-blue-600" />
+            Delivery options and estimated dates at checkout
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="flex items-center rounded-lg border border-gray-300">
               <button
                 type="button"
                 aria-label="Decrease quantity"
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="p-2 hover:bg-gray-100"
+                className="p-2.5 hover:bg-gray-100"
               >
                 <Minus size={16} />
               </button>
@@ -389,7 +478,7 @@ export const ProductDetails = ({
                 type="button"
                 aria-label="Increase quantity"
                 onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
-                className="p-2 hover:bg-gray-100"
+                className="p-2.5 hover:bg-gray-100"
               >
                 <Plus size={16} />
               </button>
@@ -399,35 +488,40 @@ export const ProductDetails = ({
               type="button"
               disabled={outOfStock}
               onClick={handleAddToCart}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+              className="flex min-w-[155px] flex-1 items-center justify-center gap-2 rounded-full bg-[#fb641b] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#e85b17] disabled:cursor-not-allowed disabled:bg-gray-300"
             >
               <ShoppingCart size={16} />
-              Add to cart
+              {addedToCart ? 'Added to cart' : 'Add to cart'}
             </button>
 
             <button
               type="button"
-              aria-label="Add to wishlist"
-              onClick={() => setWishlisted((prev) => !prev)}
-              className="rounded-lg border border-gray-300 p-2.5 hover:bg-gray-100"
+              aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+              aria-pressed={isWishlisted}
+              onClick={handleWishlist}
+              className="rounded-full border border-gray-300 p-3 hover:bg-gray-100"
             >
               <Heart
                 size={18}
                 className={
-                  wishlisted ? 'fill-red-500 text-red-500' : 'text-gray-600'
+                  isWishlisted ? 'fill-red-500 text-red-500' : 'text-gray-600'
                 }
               />
             </button>
           </div>
+          <p className="mt-4 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">
+            Safe and secure payments · Easy returns · Customer support
+          </p>
+          </div>
 
           {/* Seller details */}
           {shop && (
-            <div className="rounded-lg border border-gray-200 p-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <div className="rounded-xl border border-slate-200 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Sold by
               </p>
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-gray-500">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-gray-500">
                   {shopAvatar ? (
                     <img
                       src={shopAvatar}
@@ -472,7 +566,7 @@ export const ProductDetails = ({
                 type="button"
                 onClick={handleChatWithSeller}
                 disabled={isStarting}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 transition hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-blue-600 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
               >
                 <MessageCircle size={16} />
                 {isStarting ? 'Opening chat…' : 'Chat with Seller'}
@@ -486,7 +580,7 @@ export const ProductDetails = ({
           )}
 
           {/* Perks */}
-          <div className="space-y-1 border-t pt-4 text-sm text-gray-600">
+          <div className="space-y-2 border-t pt-4 text-sm text-gray-600">
             <p className="flex items-center gap-2">
               <Truck size={16} /> Fast delivery available
             </p>
@@ -504,7 +598,7 @@ export const ProductDetails = ({
               View full details →
             </Link>
           )}
-        </div>
+            </div>
       </div>
 
       {(data?.category || data?.subCategory || data?.brand || tags.length > 0) && (
@@ -604,7 +698,9 @@ export const ProductDetails = ({
           />
         </div>
       )}
-    </section>
+        </section>
+      </div>
+    </main>
   )
 }
 
