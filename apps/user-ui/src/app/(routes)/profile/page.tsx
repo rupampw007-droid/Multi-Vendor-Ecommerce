@@ -147,6 +147,10 @@ const ProfileContent = () => {
     },
   })
 
+  useEffect(() => {
+    if (!isLoading && !user) router.replace('/login')
+  }, [isLoading, router, user])
+
   const processingOrderCount = orders.filter(
     (order) => getOrderStatus(order) !== 'DELIVERED'
   ).length

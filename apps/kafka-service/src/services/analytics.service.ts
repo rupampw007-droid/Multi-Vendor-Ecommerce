@@ -1,5 +1,31 @@
 import prisma from '@repo/lib/prisma/prisma';
 
+interface ShopVisitEvent {
+  userId?: string;
+  shopId?: string;
+  action: 'shop_visit';
+  country?: string;
+  city?: string;
+  device?: string;
+}
+
+export const updateShopAnalytics = async (event: ShopVisitEvent) => {
+  if (!event.shopId) {
+    throw new Error('A shop ID is required for shop visit analytics');
+  }
+
+  await prisma.shopAnalytics.create({
+    data: {
+      userId: event.userId,
+      shopId: event.shopId,
+      action: event.action,
+      country: event.country,
+      city: event.city,
+      device: event.device,
+    },
+  });
+};
+
 export const updateUserAnalytics = async (event: any) => {
   try {
     const existingData = await prisma.userAnalytics.findUnique({

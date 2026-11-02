@@ -1,5 +1,8 @@
 import { kafka } from '@repo/utils/kafka';
-import { updateUserAnalytics } from './services/analytics.service';
+import {
+  updateShopAnalytics,
+  updateUserAnalytics,
+} from './services/analytics.service';
 
 const consumer = kafka.consumer({
   groupId: 'user-events-group'
@@ -15,7 +18,12 @@ const processQueue = async() => {
 
   for(const event of events) {
     if(event.action === 'shop_visit') {
-      // update shop analytics
+      try {
+        await updateShopAnalytics(event);
+      } catch (error) {
+        console.error('Error processing shop visit event: ', error);
+      }
+      continue;
     }
 
     const validActions = [

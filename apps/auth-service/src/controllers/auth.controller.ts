@@ -189,6 +189,7 @@ export const getUser = async (
         name: true,
         email: true,
         createdAt: true,
+        following: true,
         avatars: {
           select: {
             id: true,
@@ -997,6 +998,65 @@ const getAuthenticatedUserId = (req: AuthenticatedUserRequest) => {
 const validateAddressId = (id: string) => {
   if (!/^[a-f\d]{24}$/i.test(id)) {
     throw new ValidationError('A valid address ID is required');
+  }
+};
+
+export const followShop = async (
+  req: AuthenticatedUserRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+    const shopId = req.params.shopId;
+    const { follow } = req.body ?? {};
+
+    if (!/^[a-f\d]{24}$/i.test(shopId)) {
+      throw new ValidationError('A valid shop ID is required');
+    }
+    if (typeof follow !== 'boolean') {
+      throw new ValidationError('Follow must be true or false');
+    }
+
+    const shop = await prisma.shops.findUnique({
+      where: { id: shopId },
+      select: { id: true },
+    });
+    if (!shop) {
+      throw new NotFoundError('Shop not found');
+    }
+
+    const user = await prisma.users.findUnique({
+      where: { id: userId },
+      select: { following: true },
+    });
+    if (!user) {
+      throw new AuthError('User account not found');
+    }
+
+    const following = user.following.includes(shopId)
+      ? user.following
+      : [...user.following, shopId];
+    const updatedUser = await prisma.users.update({
+      where: { id: userId },
+      data: {
+        following: follow
+          ? following
+          : user.following.filter((id) => id !== shopId),
+      },
+      select: { following: true },
+    });
+    const followerCount = await prisma.users.count({
+      where: { following: { has: shopId } },
+    });
+
+    return res.status(200).json({
+      success: true,
+      following: updatedUser.following.includes(shopId),
+      followerCount,
+    });
+  } catch (error) {
+    return next(error);
   }
 };
 

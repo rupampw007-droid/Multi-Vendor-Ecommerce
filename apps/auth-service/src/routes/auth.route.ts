@@ -4,6 +4,7 @@ import {
   deleteUserAddress,
   getUser,
   getUserAddresses,
+  followShop,
   refreshToken,
   createShop,
   loginUser,
@@ -39,6 +40,7 @@ router.post('/login-admin', loginAdmin);
 router.post('/refresh-token', refreshToken);
 router.get('/logged-in-user', isAuthenticated, getUser);
 router.patch('/user-profile', isAuthenticated, updateUserProfile);
+router.patch('/follow-shop/:shopId', isAuthenticated, followShop);
 router.patch('/change-password-user', isAuthenticated, changeUserPassword);
 router.post('/logout-user', logoutUser);
 router
