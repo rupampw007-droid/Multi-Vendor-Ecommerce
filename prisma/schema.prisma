@@ -42,19 +42,27 @@ model users {
   updatedAt DateTime     @updatedAt
 }
 
-model notifications {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  title        String
-  message      String
-  creatorId    String   @db.ObjectId
-  receiverId   String   @db.ObjectId
-  orderId      String?  @db.ObjectId
-  order        orders?  @relation(fields: [orderId], references: [id])
-  redirect_link String
-  isRead       Boolean  @default(false)
-  createdAt    DateTime @default(now())
+enum NotificationRecipientRole {
+  user
+  seller
+  admin
+}
 
-  @@index([receiverId, isRead])
+model notifications {
+  id              String                     @id @default(auto()) @map("_id") @db.ObjectId
+  title           String
+  message         String
+  creatorId       String                     @db.ObjectId
+  receiverId      String                     @db.ObjectId
+  recipientRole   NotificationRecipientRole? @default(user)
+  type            String                     @default("system")
+  orderId         String?                    @db.ObjectId
+  order           orders?                    @relation(fields: [orderId], references: [id])
+  redirect_link   String
+  isRead          Boolean                    @default(false)
+  createdAt       DateTime                   @default(now())
+
+  @@index([receiverId, recipientRole, isRead, createdAt])
   @@index([orderId])
 }
 

@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '@repo/lib/prisma/prisma';
 
-type AccountRole = 'user' | 'seller';
+type AccountRole = 'user' | 'seller' | 'admin';
 
 const authenticate = (requiredRole?: AccountRole) => {
   return async (req: any, res: Response, next: NextFunction) => {
@@ -70,5 +70,6 @@ const isAuthenticated = authenticate();
 
 export const isUserAuthenticated = authenticate('user');
 export const isSellerAuthenticated = authenticate('seller');
+export const isAdminAuthenticated = authenticate('admin');
 
 export default isAuthenticated;

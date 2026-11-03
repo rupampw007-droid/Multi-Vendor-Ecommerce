@@ -532,9 +532,43 @@ export const createOrder = async (
                 : `You received a new order containing ${sellerItems.length} products.`,
             creatorId: userId,
             receiverId: seller.sellerId,
+            recipientRole: 'seller',
+            type: 'order',
             orderId: createdOrder.id,
             redirect_link: `/dashboard/orders?paymentIntentId=${encodeURIComponent(paymentIntent.id)}`,
           },
+        });
+      }
+
+      await transaction.notifications.create({
+        data: {
+          title: 'Order placed',
+          message: `Your order ${createdOrder.id.slice(-6)} has been placed successfully.`,
+          creatorId: userId,
+          receiverId: userId,
+          recipientRole: 'user',
+          type: 'order',
+          orderId: createdOrder.id,
+          redirect_link: `/order/${createdOrder.id}`,
+        },
+      });
+
+      const admins = await transaction.users.findMany({
+        where: { role: 'admin' },
+        select: { id: true },
+      });
+      if (admins.length) {
+        await transaction.notifications.createMany({
+          data: admins.map((admin) => ({
+            title: 'New marketplace order',
+            message: `Order ${createdOrder.id.slice(-6)} has been paid.`,
+            creatorId: userId,
+            receiverId: admin.id,
+            recipientRole: 'admin',
+            type: 'order',
+            orderId: createdOrder.id,
+            redirect_link: `/dashboard/orders`,
+          })),
         });
       }
 
@@ -844,26 +878,45 @@ export const updateSellerOrderFulfillment = async (
         : {}),
     };
 
-    const fulfillment = currentFulfillment
-      ? await prisma.orderFulfillments.update({
-          where: { id: currentFulfillment.id },
-          data: updateData,
-        })
-      : await prisma.orderFulfillments.create({
+    const fulfillment = await prisma.$transaction(async (transaction) => {
+      const updatedFulfillment = currentFulfillment
+        ? await transaction.orderFulfillments.update({
+            where: { id: currentFulfillment.id },
+            data: updateData,
+          })
+        : await transaction.orderFulfillments.create({
+            data: {
+              orderId: order.id,
+              shopId: shop.id,
+              ...updateData,
+              statusHistory: [
+                {
+                  status: 'PAID',
+                  updatedAt: order.createdAt.toISOString(),
+                  updatedBy: 'system',
+                },
+                ...updatedHistory,
+              ],
+            },
+          });
+
+      if (nextStatus !== currentStatus) {
+        await transaction.notifications.create({
           data: {
+            title: 'Order status updated',
+            message: `Your order ${order.id.slice(-6)} is now ${nextStatus.replaceAll('_', ' ').toLowerCase()}.`,
+            creatorId: shop.sellerId,
+            receiverId: order.userId,
+            recipientRole: 'user',
+            type: 'order',
             orderId: order.id,
-            shopId: shop.id,
-            ...updateData,
-            statusHistory: [
-              {
-                status: 'PAID',
-                updatedAt: order.createdAt.toISOString(),
-                updatedBy: 'system',
-              },
-              ...updatedHistory,
-            ],
+            redirect_link: `/order/${order.id}`,
           },
         });
+      }
+
+      return updatedFulfillment;
+    });
 
     return res.status(200).json({ fulfillment });
   } catch (error) {

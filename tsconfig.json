@@ -38,6 +38,12 @@
     },
     {
       "path": "./apps/recommendation-service"
+    },
+    {
+      "path": "./apps/notification-service-e2e"
+    },
+    {
+      "path": "./apps/notification-service"
     }
   ]
 }
