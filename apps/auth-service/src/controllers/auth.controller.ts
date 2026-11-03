@@ -18,6 +18,7 @@ import bcrypt from 'bcryptjs';
 import jwt, { JsonWebTokenError } from 'jsonwebtoken';
 import { setCookie } from '../utils/cookies/setCookie';
 import Stripe from 'stripe';
+import { sendLog } from '@repo/utils/logs/send-logs';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-08-26.dahlia',
@@ -201,6 +202,11 @@ export const getUser = async (
     if (!user) {
       throw new AuthError('User account not found');
     }
+    await sendLog({
+      type: "success",
+      message: `User data retrieved ${user?.email}`,
+      source: "auth-service"
+    })
     return res.status(200).json({
       success: true,
       user,

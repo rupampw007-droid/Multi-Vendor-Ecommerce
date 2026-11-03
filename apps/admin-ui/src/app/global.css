@@ -1794,6 +1794,340 @@ a {
   font-size: 10px;
 }
 
+.logger-page-heading {
+  margin-bottom: 20px;
+}
+
+.logger-connection {
+  display: inline-flex;
+  min-height: 31px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid #e9e9f0;
+  border-radius: 20px;
+  background: #fff;
+  color: #777a8b;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.logger-connection-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a4a6b3;
+}
+
+.logger-connection-connected {
+  border-color: #d8f0e6;
+  background: #f3fbf7;
+  color: #329575;
+}
+
+.logger-connection-connected .logger-connection-dot {
+  background: #39aa84;
+  box-shadow: 0 0 0 3px rgba(57, 170, 132, .12);
+}
+
+.logger-connection-connecting .logger-connection-dot {
+  background: #dfa34d;
+  animation: logger-pulse 1.4s ease-in-out infinite;
+}
+
+.logger-connection-disconnected,
+.logger-connection-unconfigured {
+  border-color: #f0d7db;
+  background: #fff8f8;
+  color: #a85463;
+}
+
+.logger-connection-disconnected .logger-connection-dot,
+.logger-connection-unconfigured .logger-connection-dot {
+  background: #d76b79;
+}
+
+@keyframes logger-pulse {
+  50% { opacity: .4; }
+}
+
+.logger-connection-error {
+  margin-top: -6px;
+}
+
+.logger-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.logger-stat {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px 18px;
+  border: 1px solid #ededf3;
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow: 0 4px 20px rgba(34, 36, 56, .025);
+}
+
+.logger-stat > span {
+  color: #85889a;
+  font-size: 10px;
+}
+
+.logger-stat strong {
+  color: #292b3e;
+  font-size: 23px;
+  font-weight: 650;
+  letter-spacing: -.04em;
+  line-height: 1.2;
+}
+
+.logger-stat small {
+  overflow: hidden;
+  color: #a0a2af;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logger-stat-error strong { color: #cc6170; }
+.logger-stat-warning strong { color: #cb903f; }
+
+.logger-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.logger-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 17px 19px;
+  border-bottom: 1px solid #f0eff4;
+}
+
+.logger-stream-heading,
+.logger-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logger-stream-icon,
+.logger-empty-icon {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #f0edff;
+  color: #7562f1;
+}
+
+.logger-stream-heading h2 {
+  color: #292b3e;
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.logger-stream-heading p {
+  margin-top: 4px;
+  color: #9295a5;
+  font-size: 9px;
+}
+
+.logger-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.logger-actions .button {
+  min-height: 32px;
+  padding-inline: 10px;
+}
+
+.logger-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 19px;
+  border-bottom: 1px solid #f0eff4;
+  background: #fdfdfe;
+}
+
+.logger-search {
+  display: flex;
+  min-width: 160px;
+  height: 35px;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #e9e9f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #999baa;
+}
+
+.logger-search:focus-within {
+  border-color: #c9c1ff;
+  box-shadow: 0 0 0 3px rgba(121, 103, 248, .08);
+}
+
+.logger-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #44465a;
+  font: inherit;
+  font-size: 10px;
+}
+
+.logger-search input::placeholder {
+  color: #a4a6b2;
+}
+
+.logger-level-filter {
+  display: flex;
+  height: 35px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 1px solid #e9e9f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #9295a5;
+  font-size: 9px;
+}
+
+.logger-level-filter select {
+  max-width: 110px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #5e6072;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+
+.logger-results-heading {
+  display: flex;
+  min-height: 37px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 19px;
+  color: #989aa8;
+  font-size: 9px;
+}
+
+.logger-list {
+  max-height: min(58vh, 620px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.logger-entry {
+  display: grid;
+  grid-template-columns: 90px 86px minmax(90px, 150px) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 49px;
+  padding: 8px 19px;
+  border-top: 1px solid #f1f0f5;
+}
+
+.logger-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #999baa;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.logger-level {
+  display: inline-flex;
+  width: fit-content;
+  min-width: 64px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border-radius: 20px;
+  font-size: 8px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.logger-level-error { background: #fff0f1; color: #cd5f6e; }
+.logger-level-warning { background: #fff5e8; color: #c78938; }
+.logger-level-info { background: #edf2ff; color: #637fd2; }
+.logger-level-success { background: #e9f8f2; color: #359b7b; }
+.logger-level-debug { background: #f1f1f5; color: #777a8b; }
+
+.logger-source {
+  overflow: hidden;
+  color: #77798a;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logger-message {
+  min-width: 0;
+  color: #44465a;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.logger-empty {
+  display: flex;
+  min-height: 230px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 25px;
+  text-align: center;
+}
+
+.logger-empty-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 11px;
+  border-radius: 12px;
+}
+
+.logger-empty strong {
+  color: #56596a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.logger-empty p {
+  max-width: 320px;
+  margin-top: 6px;
+  color: #9295a5;
+  font-size: 10px;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -2733,6 +3067,23 @@ a {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .logger-stats {
+    gap: 10px;
+  }
+
+  .logger-stat {
+    padding: 14px;
+  }
+
+  .logger-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .logger-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 480px) {
@@ -2752,6 +3103,30 @@ a {
   .page-heading > .button,
   .refresh-button {
     align-self: flex-start;
+  }
+
+  .logger-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .logger-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .logger-entry {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px 10px;
+    padding: 10px 13px;
+  }
+
+  .logger-source,
+  .logger-message {
+    grid-column: 1 / -1;
+  }
+
+  .logger-results-heading {
+    padding-inline: 13px;
   }
 
   .segmented-control {
