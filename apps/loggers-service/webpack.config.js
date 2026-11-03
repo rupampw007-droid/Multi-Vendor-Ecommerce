@@ -2,6 +2,12 @@ const { NxAppWebpackPlugin } = require('@nx/webpack/app-plugin');
 const { join } = require('path');
 
 module.exports = {
+  resolve: {
+    alias: {
+      '@repo': join(__dirname, '../../packages'),
+      '@multivendor-ecommerce/generated': join(__dirname, '../../generated'),
+    },
+  },
   output: {
     path: join(__dirname, 'dist'),
     clean: true,
@@ -15,7 +21,6 @@ module.exports = {
       compiler: 'tsc',
       main: './src/main.ts',
       tsConfig: './tsconfig.app.json',
-      assets: ['./src/assets'],
       optimization: false,
       outputHashing: 'none',
       generatePackageJson: false,
