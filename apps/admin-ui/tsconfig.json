@@ -19,10 +19,12 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@repo/*": ["../../packages/*"],
+      "@multivendor-ecommerce/*": ["../../*"]
     },
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../..",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "include": [
@@ -32,7 +34,8 @@
     "src/**/*.jsx",
     "../../apps/admin-ui/.next/types/**/*.ts",
     "../../dist/apps/admin-ui/.next/types/**/*.ts",
-    "next-env.d.ts"
+    "next-env.d.ts",
+    "../../packages/components/notifications/**/*.tsx"
   ],
   "exclude": [
     "out-tsc",

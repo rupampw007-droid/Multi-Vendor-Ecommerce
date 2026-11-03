@@ -26,6 +26,7 @@ import { useEffect, useState } from 'react';
 import useAdmin from '@/hooks/useAdmin';
 import axiosInstance from '@/utils/axiosInstance';
 import { useToast } from '@/shared/components/toast';
+import { NotificationUnreadBadge } from '@repo/components/notifications/notification-center';
 
 type NavEntry = { label: string; href: string; icon: typeof LayoutDashboard };
 type NavGroup = { label: string; entries: NavEntry[] };
@@ -147,7 +148,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   title={collapsed ? label : undefined}
                   onClick={() => setSidebarOpen(false)}
                 >
-                  <Icon size={18} />
+                  <span className={href === '/dashboard/notifications' ? 'relative' : undefined}>
+                    <Icon size={18} />
+                    {href === '/dashboard/notifications' && (
+                      <NotificationUnreadBadge api={axiosInstance} role="admin" />
+                    )}
+                  </span>
                   {!collapsed && <span>{label}</span>}
                 </Link>
               );

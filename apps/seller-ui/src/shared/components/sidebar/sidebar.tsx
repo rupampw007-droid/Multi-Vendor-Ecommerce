@@ -15,6 +15,7 @@ import { BellPlus, Headset, ListOrdered, LogOut, Mail, PackageSearch, Settings, 
 import Payment from '@/assets/svgs/icons/payment';
 import axiosInstance from '@/utils/axiosInstance';
 import { ChatUnreadBadge } from '@repo/components/chat/unread-badge';
+import { NotificationUnreadBadge } from '@repo/components/notifications/notification-center';
 
 const SidebarWrapper = () => {
   const { activeSidebar, setActiveSidebar } = useSidebar();
@@ -142,8 +143,11 @@ const SidebarWrapper = () => {
                 isActive={activeSidebar === '/dashboard/notifications'}
                 title="Notifications"
                 href="/notifications"
-                icon={ <Headset
-                   size={22} color={getIconColor('/dashboard/notifications')} />
+                icon={
+                  <span className="relative">
+                    <Headset size={22} color={getIconColor('/dashboard/notifications')} />
+                    {seller && <NotificationUnreadBadge api={axiosInstance} role="seller" />}
+                  </span>
                 }
               />
             </SidebarMenu>

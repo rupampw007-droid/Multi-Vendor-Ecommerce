@@ -10,6 +10,7 @@ import useUser from '@/hooks/useUser';
 import { useStore } from '@/store';
 import axiosInstance from '@/utils/axiosInstance';
 import { ChatUnreadBadge } from '@repo/components/chat/unread-badge';
+import { NotificationBell } from '@repo/components/notifications/notification-center';
 
 const Header = () => {
   const { user, isLoading } = useUser();
@@ -74,6 +75,13 @@ const Header = () => {
               <MessageCircle size={23} />
               <ChatUnreadBadge role="user" api={axiosInstance} />
             </Link>
+          )}
+          {user && (
+            <NotificationBell
+              api={axiosInstance}
+              role="user"
+              className="rounded-full p-2 text-slate-700 hover:bg-slate-100"
+            />
           )}
           <Link href={'/wishlist'} className="relative">
             <HeartIcon />

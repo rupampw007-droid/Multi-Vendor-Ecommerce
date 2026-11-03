@@ -23,6 +23,7 @@ const authenticatedPaths = [
   '/order/api/create-payment-session',
   '/order/api/create-payment-intent',
   '/order/api/verify-payment-session',
+  '/notification/api/admin/notifications',
 ];
 
 const requiresAuthentication = (config: CustomAxiosRequestConfig) => {
